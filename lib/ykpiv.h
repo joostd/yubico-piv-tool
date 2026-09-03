@@ -307,7 +307,7 @@ extern "C"
     uint8_t touch_policy;
     uint8_t origin;
     size_t pubkey_len;
-    uint8_t pubkey[1024];
+    uint8_t pubkey[3072];  // Increased for PQC: ML-DSA-87 = 2592 bytes + TLV overhead
   } ykpiv_metadata;
 
   /**
