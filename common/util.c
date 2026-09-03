@@ -41,6 +41,7 @@
 #include <openssl/evp.h>
 #include <openssl/x509.h>
 #include <openssl/rsa.h>
+#include <openssl/err.h>
 
 #include "openssl-compat.h"
 #include "ykpiv.h"
@@ -83,7 +84,6 @@ FILE *open_file(const char *file_name, enum file_mode mode) {
 unsigned char get_algorithm(EVP_PKEY *key) {
   int type = EVP_PKEY_base_id(key);
   int size = EVP_PKEY_bits(key);
-  fprintf(stderr, "DEBUG: EVP_PKEY_base_id=%d, EVP_PKEY_bits=%d\n", type, size);
   switch(type) {
     case EVP_PKEY_RSA:
       {
@@ -892,7 +892,11 @@ int do_create_public_key(uint8_t *in, size_t in_len, uint8_t algorithm, EVP_PKEY
     // Create EVP_PKEY from raw public key bytes
     *pkey = EVP_PKEY_new_raw_public_key(nid, NULL, in, len);
     if (*pkey == NULL) {
+      unsigned long err = ERR_get_error();
+      char err_buf[256];
+      ERR_error_string_n(err, err_buf, sizeof(err_buf));
       fprintf(stderr, "Failed to create PQC public key (algorithm 0x%02x, %zu bytes)\n", algorithm, len);
+      fprintf(stderr, "OpenSSL error: %s\n", err_buf);
       return YKPIV_MEMORY_ERROR;
     }
     return YKPIV_OK;

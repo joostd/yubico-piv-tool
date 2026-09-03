@@ -374,7 +374,9 @@ CK_RV do_parse_attestation(ykcs11_x509_t *cert, CK_BYTE_PTR pin_policy, CK_BYTE_
 CK_KEY_TYPE do_get_key_type(ykcs11_pkey_t *key) {
 
   if(key) { // EVP_PKEY_base_id doesn't handle NULL
-    switch (EVP_PKEY_base_id(key)) {
+    int base_id = EVP_PKEY_base_id(key);
+
+    switch (base_id) {
     case EVP_PKEY_RSA:
       return CKK_RSA;
     case EVP_PKEY_EC:
@@ -387,6 +389,8 @@ CK_KEY_TYPE do_get_key_type(ykcs11_pkey_t *key) {
 #endif
 #if (OPENSSL_VERSION_NUMBER >= 0x30600000L)
     // Post-Quantum Cryptography (OpenSSL 3.6+)
+    // Note: PQC keys created with EVP_PKEY_new_raw_public_key return base_id=0
+    // because they're provider-based. Use type name instead.
     case EVP_PKEY_ML_DSA_44:
     case EVP_PKEY_ML_DSA_65:
     case EVP_PKEY_ML_DSA_87:
@@ -395,6 +399,28 @@ CK_KEY_TYPE do_get_key_type(ykcs11_pkey_t *key) {
     case NID_ML_KEM_768:
     case NID_ML_KEM_1024:
       return CKK_ML_KEM;
+    case 0:
+    case -1:
+      // Provider-based algorithms (like PQC) may not have a base_id
+      // Try using type name instead
+      {
+        const char *type_name = EVP_PKEY_get0_type_name(key);
+        if (type_name) {
+          // Check for ML-DSA variants
+          if (strcmp(type_name, "ML-DSA-44") == 0 ||
+              strcmp(type_name, "ML-DSA-65") == 0 ||
+              strcmp(type_name, "ML-DSA-87") == 0) {
+            return CKK_ML_DSA;
+          }
+          // Check for ML-KEM variants
+          if (strcmp(type_name, "ML-KEM-512") == 0 ||
+              strcmp(type_name, "ML-KEM-768") == 0 ||
+              strcmp(type_name, "ML-KEM-1024") == 0) {
+            return CKK_ML_KEM;
+          }
+        }
+      }
+      break;
 #endif
     }
   }
@@ -433,7 +459,9 @@ CK_ULONG do_get_signature_size(ykcs11_pkey_t *key) {
 CK_BYTE do_get_key_algorithm(ykcs11_pkey_t *key) {
 
   if(key) { // EVP_PKEY_base_id doesn't handle NULL
-    switch (EVP_PKEY_base_id(key)) {
+    int base_id = EVP_PKEY_base_id(key);
+
+    switch (base_id) {
     case EVP_PKEY_RSA:
       switch(EVP_PKEY_bits(key)) {
       case 1024:
@@ -445,6 +473,7 @@ CK_BYTE do_get_key_algorithm(ykcs11_pkey_t *key) {
       case 4096:
         return YKPIV_ALGO_RSA4096;
       }
+      break;
     case EVP_PKEY_EC:
       switch(EVP_PKEY_bits(key)) {
       case 256:
@@ -452,6 +481,7 @@ CK_BYTE do_get_key_algorithm(ykcs11_pkey_t *key) {
       case 384:
         return YKPIV_ALGO_ECCP384;
       }
+      break;
 #if (OPENSSL_VERSION_NUMBER >= 0x10100000L)
     case EVP_PKEY_ED25519:
       return YKPIV_ALGO_ED25519;
@@ -472,6 +502,22 @@ CK_BYTE do_get_key_algorithm(ykcs11_pkey_t *key) {
       return YKPIV_ALGO_MLKEM768;
     case NID_ML_KEM_1024:
       return YKPIV_ALGO_MLKEM1024;
+    case 0:
+    case -1:
+      // Provider-based algorithms (like PQC) may not have a base_id
+      // Use type name instead
+      {
+        const char *type_name = EVP_PKEY_get0_type_name(key);
+        if (type_name) {
+          if (strcmp(type_name, "ML-DSA-44") == 0) return YKPIV_ALGO_MLDSA44;
+          if (strcmp(type_name, "ML-DSA-65") == 0) return YKPIV_ALGO_MLDSA65;
+          if (strcmp(type_name, "ML-DSA-87") == 0) return YKPIV_ALGO_MLDSA87;
+          if (strcmp(type_name, "ML-KEM-512") == 0) return YKPIV_ALGO_MLKEM512;
+          if (strcmp(type_name, "ML-KEM-768") == 0) return YKPIV_ALGO_MLKEM768;
+          if (strcmp(type_name, "ML-KEM-1024") == 0) return YKPIV_ALGO_MLKEM1024;
+        }
+      }
+      break;
 #endif
     }
   }
