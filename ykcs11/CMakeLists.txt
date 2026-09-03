@@ -41,6 +41,7 @@ set(
         utils.c
         openssl_utils.c
         objects.c
+        pqc_utils.c
         ../common/openssl-compat.c
         ../common/util.c
 )

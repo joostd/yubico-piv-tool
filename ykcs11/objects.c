@@ -36,6 +36,8 @@
 #include "openssl_utils.h"
 #include "utils.h"
 #include "debug.h"
+#include "pqc_utils.h"
+#include "mechanisms.h"
 
 #define PRIME256V1 "\x06\x08\x2a\x86\x48\xce\x3d\x03\x01\x07" // TODO: already define in mechanisms.c. Move
 #define SECP384R1 "\x06\x05\x2b\x81\x04\x00\x22" // TODO: already define in mechanisms.c. Move
@@ -2922,6 +2924,102 @@ static CK_RV check_x_pubkey_template(gen_info_t *gen, CK_ATTRIBUTE_PTR templ, CK
   return CKR_OK;
 }
 
+// Check template for PQC (ML-DSA or ML-KEM) public key generation
+static CK_RV check_pqc_pubkey_template(gen_info_t *gen, CK_MECHANISM_PTR mechanism, CK_ATTRIBUTE_PTR templ, CK_ULONG n) {
+  CK_KEY_TYPE expected_key_type;
+  CK_BBOOL found_parameter_set = CK_FALSE;
+
+  // Determine expected key type based on mechanism
+  if (mechanism->mechanism == CKM_ML_DSA_KEY_PAIR_GEN) {
+    expected_key_type = CKK_ML_DSA;
+  } else if (mechanism->mechanism == CKM_ML_KEM_KEY_PAIR_GEN) {
+    expected_key_type = CKK_ML_KEM;
+  } else {
+    DBG("Unexpected mechanism %lx in check_pqc_pubkey_template", mechanism->mechanism);
+    return CKR_MECHANISM_INVALID;
+  }
+
+  for (CK_ULONG i = 0; i < n; i++) {
+    switch (templ[i].type) {
+      case CKA_CLASS:
+        if (*((CK_ULONG_PTR) templ[i].pValue) != CKO_PUBLIC_KEY) {
+          DBG("Bad CKA_CLASS");
+          return CKR_TEMPLATE_INCONSISTENT;
+        }
+        break;
+
+      case CKA_KEY_TYPE:
+        if (*((CK_KEY_TYPE *)templ[i].pValue) != expected_key_type) {
+          DBG("Bad CKA_KEY_TYPE: expected %lx, got %lx", expected_key_type, *((CK_KEY_TYPE *)templ[i].pValue));
+          return CKR_TEMPLATE_INCONSISTENT;
+        }
+        break;
+
+      case CKA_PARAMETER_SET:
+        // Map PKCS#11 OID to PIV algorithm ID
+        gen->algorithm = oid_to_piv_algorithm((CK_BYTE_PTR)templ[i].pValue, templ[i].ulValueLen);
+        if (gen->algorithm == 0) {
+          DBG("Invalid or unknown CKA_PARAMETER_SET OID");
+          return CKR_ATTRIBUTE_VALUE_INVALID;
+        }
+
+        // Verify algorithm matches mechanism
+        if (mechanism->mechanism == CKM_ML_DSA_KEY_PAIR_GEN && !YKPIV_IS_MLDSA(gen->algorithm)) {
+          DBG("CKA_PARAMETER_SET OID is not for ML-DSA");
+          return CKR_ATTRIBUTE_VALUE_INVALID;
+        }
+        if (mechanism->mechanism == CKM_ML_KEM_KEY_PAIR_GEN && !YKPIV_IS_MLKEM(gen->algorithm)) {
+          DBG("CKA_PARAMETER_SET OID is not for ML-KEM");
+          return CKR_ATTRIBUTE_VALUE_INVALID;
+        }
+
+        found_parameter_set = CK_TRUE;
+        DBG("Mapped CKA_PARAMETER_SET OID to PIV algorithm 0x%02x", gen->algorithm);
+        break;
+
+      case CKA_ID:
+        if (find_pubk_object(*((CK_BYTE_PTR)templ[i].pValue)) == PIV_INVALID_OBJ) {
+          DBG("Bad CKA_ID");
+          return CKR_ATTRIBUTE_VALUE_INVALID;
+        }
+        gen->key_id = *((CK_BYTE_PTR)templ[i].pValue);
+        break;
+
+      case CKA_COPYABLE:
+      case CKA_DESTROYABLE:
+      case CKA_EXTRACTABLE:
+      case CKA_SENSITIVE:
+      case CKA_TOKEN:
+      case CKA_ENCRYPT:
+      case CKA_DECRYPT:
+      case CKA_SIGN:
+      case CKA_SIGN_RECOVER:
+      case CKA_VERIFY:
+      case CKA_VERIFY_RECOVER:
+      case CKA_WRAP:
+      case CKA_UNWRAP:
+      case CKA_DERIVE:
+      case CKA_PRIVATE:
+      case CKA_LABEL:
+      case CKA_ISSUER:
+      case CKA_SUBJECT:
+        // Ignore these attributes for now
+        break;
+
+      default:
+        DBG("Invalid attribute %lx in PQC public key template", templ[i].type);
+        return CKR_ATTRIBUTE_TYPE_INVALID;
+    }
+  }
+
+  if (!found_parameter_set) {
+    DBG("CKA_PARAMETER_SET is required for PQC key generation");
+    return CKR_TEMPLATE_INCOMPLETE;
+  }
+
+  return CKR_OK;
+}
+
 CK_RV check_pubkey_template(gen_info_t *gen, CK_MECHANISM_PTR mechanism, CK_ATTRIBUTE_PTR templ, CK_ULONG n) {
   switch(mechanism->mechanism) {
     case CKM_RSA_PKCS_KEY_PAIR_GEN:
@@ -2932,6 +3030,9 @@ CK_RV check_pubkey_template(gen_info_t *gen, CK_MECHANISM_PTR mechanism, CK_ATTR
       return check_ed_pubkey_template(gen, templ, n);
     case CKM_EC_MONTGOMERY_KEY_PAIR_GEN:
       return check_x_pubkey_template(gen, templ, n);
+    case CKM_ML_DSA_KEY_PAIR_GEN:
+    case CKM_ML_KEM_KEY_PAIR_GEN:
+      return check_pqc_pubkey_template(gen, mechanism, templ, n);
     default:
       DBG("Unsupported public key mechanism %lx ", mechanism->mechanism);
       return CKR_MECHANISM_INVALID;
@@ -2972,6 +3073,18 @@ CK_RV check_pvtkey_template(gen_info_t *gen, CK_MECHANISM_PTR mechanism, CK_ATTR
             break;
           case CKM_EC_MONTGOMERY_KEY_PAIR_GEN:
             if (*((CK_KEY_TYPE *) templ[i].pValue) != CKK_EC_MONTGOMERY) {
+              DBG("Bad CKA_KEY_TYPE");
+              return CKR_TEMPLATE_INCONSISTENT;
+            }
+            break;
+          case CKM_ML_DSA_KEY_PAIR_GEN:
+            if (*((CK_KEY_TYPE *) templ[i].pValue) != CKK_ML_DSA) {
+              DBG("Bad CKA_KEY_TYPE");
+              return CKR_TEMPLATE_INCONSISTENT;
+            }
+            break;
+          case CKM_ML_KEM_KEY_PAIR_GEN:
+            if (*((CK_KEY_TYPE *) templ[i].pValue) != CKK_ML_KEM) {
               DBG("Bad CKA_KEY_TYPE");
               return CKR_TEMPLATE_INCONSISTENT;
             }
