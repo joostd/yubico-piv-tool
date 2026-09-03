@@ -34,6 +34,7 @@
 #include "../common/util.h"
 #include "../common/openssl-compat.h"
 #include "debug.h"
+#include "mechanisms.h"
 #include <string.h>
 
 CK_RV do_rand_seed(CK_BYTE_PTR data, CK_ULONG len) {
@@ -384,6 +385,17 @@ CK_KEY_TYPE do_get_key_type(ykcs11_pkey_t *key) {
     case EVP_PKEY_X25519:
       return CKK_EC_MONTGOMERY;
 #endif
+#if (OPENSSL_VERSION_NUMBER >= 0x30600000L)
+    // Post-Quantum Cryptography (OpenSSL 3.6+)
+    case EVP_PKEY_ML_DSA_44:
+    case EVP_PKEY_ML_DSA_65:
+    case EVP_PKEY_ML_DSA_87:
+      return CKK_ML_DSA;
+    case NID_ML_KEM_512:
+    case NID_ML_KEM_768:
+    case NID_ML_KEM_1024:
+      return CKK_ML_KEM;
+#endif
     }
   }
   return CKK_VENDOR_DEFINED; // Actually an error
@@ -445,6 +457,21 @@ CK_BYTE do_get_key_algorithm(ykcs11_pkey_t *key) {
       return YKPIV_ALGO_ED25519;
     case EVP_PKEY_X25519:
       return YKPIV_ALGO_X25519;
+#endif
+#if (OPENSSL_VERSION_NUMBER >= 0x30600000L)
+    // Post-Quantum Cryptography (OpenSSL 3.6+)
+    case EVP_PKEY_ML_DSA_44:
+      return YKPIV_ALGO_MLDSA44;
+    case EVP_PKEY_ML_DSA_65:
+      return YKPIV_ALGO_MLDSA65;
+    case EVP_PKEY_ML_DSA_87:
+      return YKPIV_ALGO_MLDSA87;
+    case NID_ML_KEM_512:
+      return YKPIV_ALGO_MLKEM512;
+    case NID_ML_KEM_768:
+      return YKPIV_ALGO_MLKEM768;
+    case NID_ML_KEM_1024:
+      return YKPIV_ALGO_MLKEM1024;
 #endif
     }
   }
@@ -547,6 +574,24 @@ CK_RV do_get_public_key(ykcs11_pkey_t *key, CK_BYTE_PTR data, CK_ULONG_PTR len) 
       ASN1_OCTET_STRING_free(a);
     }
     break;
+
+#if (OPENSSL_VERSION_NUMBER >= 0x30600000L)
+  // Post-Quantum Cryptography (OpenSSL 3.6+)
+  case EVP_PKEY_ML_DSA_44:
+  case EVP_PKEY_ML_DSA_65:
+  case EVP_PKEY_ML_DSA_87:
+  case NID_ML_KEM_512:
+  case NID_ML_KEM_768:
+  case NID_ML_KEM_1024: {
+      // PQC keys: raw public key bytes
+      size_t n = *len;
+      if(EVP_PKEY_get_raw_public_key(key, data, &n) != 1) {
+        return CKR_FUNCTION_FAILED;
+      }
+      *len = n;
+    }
+    break;
+#endif
 
   default:
     return CKR_FUNCTION_FAILED;

@@ -775,6 +775,34 @@ static CK_RV get_proa(ykcs11_slot_t *s, piv_obj_id_t obj, CK_ATTRIBUTE_PTR templ
     data = b_tmp;
     break;
 
+  case CKA_PARAMETER_SET:
+    // PKCS#11 v3.2 - PQC parameter set (DER-encoded OID)
+    DBG("PARAMETER_SET (PQC)");
+
+    // Make sure this is a PQC key
+    ul_tmp = do_get_key_type(s->pkeys[piv_objects[obj].sub_id]);
+    if (ul_tmp != CKK_ML_DSA && ul_tmp != CKK_ML_KEM)
+      return CKR_ATTRIBUTE_TYPE_INVALID;
+
+    // Get PIV algorithm ID from key
+    {
+      unsigned char piv_algorithm = do_get_key_algorithm(s->pkeys[piv_objects[obj].sub_id]);
+      if (piv_algorithm == 0)
+        return CKR_FUNCTION_FAILED;
+
+      // Map PIV algorithm to NIST OID
+      const CK_BYTE *oid = piv_algorithm_to_oid(piv_algorithm, (CK_ULONG*)&len);
+      if (oid == NULL)
+        return CKR_FUNCTION_FAILED;
+
+      if (len > sizeof(b_tmp))
+        return CKR_BUFFER_TOO_SMALL;
+
+      memcpy(b_tmp, oid, len);
+      data = b_tmp;
+    }
+    break;
+
   case CKA_ALWAYS_AUTHENTICATE:
     DBG("ALWAYS AUTHENTICATE");
     switch(s->pin_policy[piv_objects[obj].sub_id]) {
@@ -1092,6 +1120,34 @@ static CK_RV get_puoa(ykcs11_slot_t *s, piv_obj_id_t obj, CK_ATTRIBUTE_PTR templ
     if ((rv = do_get_public_exponent(s->pkeys[piv_objects[obj].sub_id], b_tmp, &len)) != CKR_OK)
       return rv;
     data = b_tmp;
+    break;
+
+  case CKA_PARAMETER_SET:
+    // PKCS#11 v3.2 - PQC parameter set (DER-encoded OID)
+    DBG("PARAMETER_SET (PQC)");
+
+    // Make sure this is a PQC key
+    ul_tmp = do_get_key_type(s->pkeys[piv_objects[obj].sub_id]);
+    if (ul_tmp != CKK_ML_DSA && ul_tmp != CKK_ML_KEM)
+      return CKR_ATTRIBUTE_TYPE_INVALID;
+
+    // Get PIV algorithm ID from key
+    {
+      unsigned char piv_algorithm = do_get_key_algorithm(s->pkeys[piv_objects[obj].sub_id]);
+      if (piv_algorithm == 0)
+        return CKR_FUNCTION_FAILED;
+
+      // Map PIV algorithm to NIST OID
+      const CK_BYTE *oid = piv_algorithm_to_oid(piv_algorithm, (CK_ULONG*)&len);
+      if (oid == NULL)
+        return CKR_FUNCTION_FAILED;
+
+      if (len > sizeof(b_tmp))
+        return CKR_BUFFER_TOO_SMALL;
+
+      memcpy(b_tmp, oid, len);
+      data = b_tmp;
+    }
     break;
 
   case CKA_MODIFIABLE:
