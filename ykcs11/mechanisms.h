@@ -33,6 +33,20 @@
 
 #include "ykcs11.h"
 
+// PKCS#11 v3.2 Post-Quantum Cryptography mechanisms
+// Specification: https://docs.oasis-open.org/pkcs11/pkcs11-spec/v3.2/pkcs11-spec-v3.2.html
+#ifndef CKM_ML_DSA_KEY_PAIR_GEN
+#define CKM_ML_DSA_KEY_PAIR_GEN        0x0000001cUL  // ML-DSA key pair generation (generic)
+#define CKM_ML_DSA                     0x0000001dUL  // ML-DSA sign/verify
+#define CKM_HASH_ML_DSA_SHA256         0x00000024UL  // Hash-then-sign with SHA-256
+#define CKM_HASH_ML_DSA_SHA512         0x00000026UL  // Hash-then-sign with SHA-512
+#define CKM_ML_KEM_KEY_PAIR_GEN        0x0000000fUL  // ML-KEM key pair generation (generic)
+#define CKM_ML_KEM                     0x00000017UL  // ML-KEM encapsulate/decapsulate
+#define CKK_ML_DSA                     0x0000004aUL  // ML-DSA key type
+#define CKK_ML_KEM                     0x00000049UL  // ML-KEM key type
+#define CKA_PARAMETER_SET              0x0000061dUL  // Parameter set selection (OID)
+#endif
+
 CK_RV sign_mechanism_init(ykcs11_session_t *session, ykcs11_pkey_t *key, CK_MECHANISM_PTR mech);
 CK_RV sign_mechanism_final(ykcs11_session_t *session, CK_BYTE_PTR sig, CK_ULONG_PTR sig_len);
 CK_RV sign_mechanism_cleanup(ykcs11_session_t *session);

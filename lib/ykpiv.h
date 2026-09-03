@@ -638,6 +638,13 @@ extern "C"
 #define YKPIV_ALGO_ECCP384 0x14
 #define YKPIV_ALGO_ED25519 0xE0
 #define YKPIV_ALGO_X25519 0xE1
+// Post-Quantum Cryptography (FIPS 203/204)
+#define YKPIV_ALGO_MLDSA44 0xE2    // ML-DSA-44 (1312-byte public key)
+#define YKPIV_ALGO_MLDSA65 0xE3    // ML-DSA-65 (1952-byte public key)
+#define YKPIV_ALGO_MLDSA87 0xE4    // ML-DSA-87 (2592-byte public key)
+#define YKPIV_ALGO_MLKEM512 0xE5   // ML-KEM-512 (800-byte public key)
+#define YKPIV_ALGO_MLKEM768 0xE6   // ML-KEM-768 (1184-byte public key)
+#define YKPIV_ALGO_MLKEM1024 0xE7  // ML-KEM-1024 (1568-byte public key)
 
 #define YKPIV_ALGO_AUTO 0xff
 
@@ -791,6 +798,9 @@ extern "C"
 #define YKPIV_IS_EC(a) ((a == YKPIV_ALGO_ECCP256 || a == YKPIV_ALGO_ECCP384))
 #define YKPIV_IS_RSA(a) ((a == YKPIV_ALGO_RSA1024 || a == YKPIV_ALGO_RSA2048 || a == YKPIV_ALGO_RSA3072 || a == YKPIV_ALGO_RSA4096))
 #define YKPIV_IS_25519(a) ((a == YKPIV_ALGO_ED25519 || a == YKPIV_ALGO_X25519))
+#define YKPIV_IS_MLDSA(a) ((a == YKPIV_ALGO_MLDSA44 || a == YKPIV_ALGO_MLDSA65 || a == YKPIV_ALGO_MLDSA87))
+#define YKPIV_IS_MLKEM(a) ((a == YKPIV_ALGO_MLKEM512 || a == YKPIV_ALGO_MLKEM768 || a == YKPIV_ALGO_MLKEM1024))
+#define YKPIV_IS_PQC(a) (YKPIV_IS_MLDSA(a) || YKPIV_IS_MLKEM(a))
 
 #define YKPIV_MIN_PIN_LEN 6
 #define YKPIV_MAX_PIN_LEN 8

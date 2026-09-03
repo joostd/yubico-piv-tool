@@ -34,6 +34,7 @@
 #include "debug.h"
 #include "objects.h"
 #include "openssl_utils.h"
+#include "mechanisms.h"
 
 #include <stdbool.h>
 #include "../common/util.h"
@@ -42,6 +43,11 @@
 #define MAX_RSA_KEY_SIZE 4096
 #define MIN_ECC_KEY_SIZE 256
 #define MAX_ECC_KEY_SIZE 384
+// Post-Quantum Cryptography key sizes (in bytes, for public keys)
+#define MIN_MLDSA_KEY_SIZE 1312  // ML-DSA-44
+#define MAX_MLDSA_KEY_SIZE 2592  // ML-DSA-87
+#define MIN_MLKEM_KEY_SIZE 800   // ML-KEM-512
+#define MAX_MLKEM_KEY_SIZE 1568  // ML-KEM-1024
 
 static const char *token_model = "YubiKey XXX";
 
@@ -74,7 +80,14 @@ static const token_mechanism token_mechanisms[] = {
   CKM_SHA512, {0, 0, CKF_DIGEST},
   CKM_EC_EDWARDS_KEY_PAIR_GEN, {255, 255, CKF_HW | CKF_GENERATE_KEY_PAIR | CKF_EC_F_P | CKF_EC_NAMEDCURVE | CKF_EC_UNCOMPRESS},
   CKM_EC_MONTGOMERY_KEY_PAIR_GEN, {255, 255, CKF_HW | CKF_GENERATE_KEY_PAIR | CKF_EC_F_P | CKF_EC_NAMEDCURVE | CKF_EC_UNCOMPRESS},
-  CKM_EDDSA, {255, 255, CKF_HW | CKF_SIGN | CKF_VERIFY | CKF_EC_F_P | CKF_EC_NAMEDCURVE | CKF_EC_UNCOMPRESS}
+  CKM_EDDSA, {255, 255, CKF_HW | CKF_SIGN | CKF_VERIFY | CKF_EC_F_P | CKF_EC_NAMEDCURVE | CKF_EC_UNCOMPRESS},
+  // Post-Quantum Cryptography (PKCS#11 v3.2)
+  CKM_ML_DSA_KEY_PAIR_GEN, {MIN_MLDSA_KEY_SIZE, MAX_MLDSA_KEY_SIZE, CKF_HW | CKF_GENERATE_KEY_PAIR},
+  CKM_ML_DSA, {MIN_MLDSA_KEY_SIZE, MAX_MLDSA_KEY_SIZE, CKF_HW | CKF_SIGN | CKF_VERIFY},
+  CKM_HASH_ML_DSA_SHA256, {MIN_MLDSA_KEY_SIZE, MAX_MLDSA_KEY_SIZE, CKF_HW | CKF_SIGN | CKF_VERIFY},
+  CKM_HASH_ML_DSA_SHA512, {MIN_MLDSA_KEY_SIZE, MAX_MLDSA_KEY_SIZE, CKF_HW | CKF_SIGN | CKF_VERIFY},
+  CKM_ML_KEM_KEY_PAIR_GEN, {MIN_MLKEM_KEY_SIZE, MAX_MLKEM_KEY_SIZE, CKF_HW | CKF_GENERATE_KEY_PAIR},
+  CKM_ML_KEM, {MIN_MLKEM_KEY_SIZE, MAX_MLKEM_KEY_SIZE, CKF_HW | CKF_WRAP | CKF_UNWRAP}
 };
 
 // The commented out objects below are either not supported (PIV_DATA_OBJ_BITGT) or requires authentication.
