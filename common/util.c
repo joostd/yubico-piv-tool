@@ -819,6 +819,74 @@ int do_create_public_key(uint8_t *in, size_t in_len, uint8_t algorithm, EVP_PKEY
 
     in += offs;
     return do_create_rsa_key(mod, mod_len, in, len, pkey);
+  } else if (YKPIV_IS_PQC(algorithm)) {
+    // Post-Quantum Cryptography: ML-DSA uses tag 0x87, ML-KEM uses tag 0x88
+    if(in >= eob)
+      return YKPIV_GENERIC_ERROR;
+
+    uint8_t expected_tag = YKPIV_IS_MLDSA(algorithm) ? 0x87 : 0x88;
+    if(*in++ != expected_tag) {
+      fprintf(stderr, "Expected PQC tag 0x%02x, got 0x%02x\n", expected_tag, *(in-1));
+      return YKPIV_GENERIC_ERROR;
+    }
+
+    offs = get_length(in, eob, &len);
+    if(!offs)
+      return YKPIV_GENERIC_ERROR;
+
+    in += offs;
+
+#if (OPENSSL_VERSION_NUMBER >= 0x30600000L)
+    // OpenSSL 3.6+ has native ML-DSA and ML-KEM support
+    // NIDs from obj_mac.h: ML_DSA_44=1457, ML_DSA_65=1458, ML_DSA_87=1459
+    //                      ML_KEM_512=1454, ML_KEM_768=1455, ML_KEM_1024=1456
+    int nid;
+    if (YKPIV_IS_MLDSA(algorithm)) {
+      // ML-DSA: Use EVP_PKEY_ML_DSA_* constants defined in evp.h
+      switch (algorithm) {
+        case YKPIV_ALGO_MLDSA44:
+          nid = EVP_PKEY_ML_DSA_44;
+          break;
+        case YKPIV_ALGO_MLDSA65:
+          nid = EVP_PKEY_ML_DSA_65;
+          break;
+        case YKPIV_ALGO_MLDSA87:
+          nid = EVP_PKEY_ML_DSA_87;
+          break;
+        default:
+          return YKPIV_NOT_SUPPORTED;
+      }
+    } else {
+      // ML-KEM: Use NID_ML_KEM_* constants directly (no EVP_PKEY_ML_KEM_* defined)
+      switch (algorithm) {
+        case YKPIV_ALGO_MLKEM512:
+          nid = NID_ML_KEM_512;
+          break;
+        case YKPIV_ALGO_MLKEM768:
+          nid = NID_ML_KEM_768;
+          break;
+        case YKPIV_ALGO_MLKEM1024:
+          nid = NID_ML_KEM_1024;
+          break;
+        default:
+          return YKPIV_NOT_SUPPORTED;
+      }
+    }
+
+    // Create EVP_PKEY from raw public key bytes
+    *pkey = EVP_PKEY_new_raw_public_key(nid, NULL, in, len);
+    if (*pkey == NULL) {
+      fprintf(stderr, "Failed to create PQC public key (algorithm 0x%02x, %zu bytes)\n", algorithm, len);
+      return YKPIV_MEMORY_ERROR;
+    }
+    return YKPIV_OK;
+#else
+    // For OpenSSL < 3.6, we can't create a proper EVP_PKEY for PQC
+    // Store the raw public key but certificate generation will fail
+    *pkey = NULL;
+    fprintf(stderr, "Note: PQC public key extracted (%zu bytes), but OpenSSL 3.6+ required for full support\n", len);
+    return YKPIV_OK;
+#endif
   } else {
     if(in >= eob)
       return YKPIV_GENERIC_ERROR;

@@ -392,7 +392,8 @@ CK_RV token_generate_key(ykpiv_state *state, gen_info_t *gen, CK_BYTE key, CK_BY
   // TODO: make a function in ykpiv for this
   unsigned char in_data[11] = {0};
   unsigned char *in_ptr = in_data;
-  unsigned char data[1024] = {0};
+  // Increase buffer size for PQC keys (ML-DSA-87 public key is 2592 bytes)
+  unsigned char data[4096] = {0};
   unsigned char templ[] = {0, YKPIV_INS_GENERATE_ASYMMETRIC, 0, 0};
   uint8_t certdata[YKPIV_OBJ_MAX_SIZE + 16] = {0};
   size_t certdata_len = sizeof(certdata);
@@ -430,7 +431,21 @@ CK_RV token_generate_key(ykpiv_state *state, gen_info_t *gen, CK_BYTE key, CK_BY
       }
       break;
 
+    // Post-Quantum Cryptography (YubiKey 6.0+)
+    case YKPIV_ALGO_MLDSA44:
+    case YKPIV_ALGO_MLDSA65:
+    case YKPIV_ALGO_MLDSA87:
+    case YKPIV_ALGO_MLKEM512:
+    case YKPIV_ALGO_MLKEM768:
+    case YKPIV_ALGO_MLKEM1024:
+      // Note: Version check would be is_version_compatible(state, 6, 0, 0)
+      // but YubiKey 6 reports PIV version 0.0.1, so we can't use that check
+      // For now, let the hardware fail if it doesn't support PQC
+      DBG("Generating PQC key with algorithm 0x%02x", gen->algorithm);
+      break;
+
     default:
+      DBG("Unsupported algorithm 0x%02x", gen->algorithm);
       return CKR_FUNCTION_FAILED;
   }
 
@@ -487,7 +502,7 @@ CK_RV token_generate_key(ykpiv_state *state, gen_info_t *gen, CK_BYTE key, CK_BY
 
   snprintf(label, sizeof(label), "YubiKey PIV Slot %x", key);
 
-  // Create a new empty certificate for the key
+  // Create a new empty certificate for the key (all algorithms including PQC)
   offs = 2 + get_length(data + 2, data + recv_len, &len);
   if(offs == 2)
     return CKR_DEVICE_ERROR;
