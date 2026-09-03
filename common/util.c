@@ -83,6 +83,7 @@ FILE *open_file(const char *file_name, enum file_mode mode) {
 unsigned char get_algorithm(EVP_PKEY *key) {
   int type = EVP_PKEY_base_id(key);
   int size = EVP_PKEY_bits(key);
+  fprintf(stderr, "DEBUG: EVP_PKEY_base_id=%d, EVP_PKEY_bits=%d\n", type, size);
   switch(type) {
     case EVP_PKEY_RSA:
       {
@@ -116,6 +117,21 @@ unsigned char get_algorithm(EVP_PKEY *key) {
       return YKPIV_ALGO_ED25519;
     case EVP_PKEY_X25519:
       return YKPIV_ALGO_X25519;
+#endif
+#if (OPENSSL_VERSION_NUMBER >= 0x30600000L)
+    // Post-Quantum Cryptography (OpenSSL 3.6+)
+    case EVP_PKEY_ML_DSA_44:
+      return YKPIV_ALGO_MLDSA44;
+    case EVP_PKEY_ML_DSA_65:
+      return YKPIV_ALGO_MLDSA65;
+    case EVP_PKEY_ML_DSA_87:
+      return YKPIV_ALGO_MLDSA87;
+    case NID_ML_KEM_512:
+      return YKPIV_ALGO_MLKEM512;
+    case NID_ML_KEM_768:
+      return YKPIV_ALGO_MLKEM768;
+    case NID_ML_KEM_1024:
+      return YKPIV_ALGO_MLKEM1024;
 #endif
     default:
       fprintf(stderr, "Unknown algorithm %d.\n", type);
