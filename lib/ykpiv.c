@@ -1790,6 +1790,15 @@ static ykpiv_rc _general_authenticate(ykpiv_state *state,
         return YKPIV_NOT_SUPPORTED;
       }
       break;
+    case YKPIV_ALGO_MLDSA44:
+    case YKPIV_ALGO_MLDSA65:
+    case YKPIV_ALGO_MLDSA87:
+      if(decipher) {
+        DBG("Deciphering with ML-DSA keys is not supported");
+        return YKPIV_NOT_SUPPORTED;
+      }
+      // ML-DSA accepts messages of any length (firmware hashes if needed)
+      break;
     default:
       return YKPIV_ALGORITHM_ERROR;
   }
@@ -1800,7 +1809,19 @@ static ykpiv_rc _general_authenticate(ykpiv_state *state,
   dataptr += _ykpiv_set_length(dataptr, in_len + bytes + 3);
   *dataptr++ = 0x82;
   *dataptr++ = 0x00;
-  *dataptr++ = !YKPIV_IS_RSA(algorithm) && decipher ? 0x85 : 0x81;
+
+  // Select tag based on operation and algorithm
+  unsigned char data_tag;
+  if (!decipher) {
+    data_tag = 0x81;  // Signing: challenge tag
+  } else if (YKPIV_IS_MLKEM(algorithm)) {
+    data_tag = 0x86;  // ML-KEM decapsulation: ciphertext tag
+  } else if (!YKPIV_IS_RSA(algorithm)) {
+    data_tag = 0x85;  // EC/X25519 decipher: response tag
+  } else {
+    data_tag = 0x81;  // RSA decipher
+  }
+  *dataptr++ = data_tag;
   dataptr += _ykpiv_set_length(dataptr, in_len);
   if(dataptr - indata + in_len > sizeof(indata)) {
     return YKPIV_SIZE_ERROR;

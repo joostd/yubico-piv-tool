@@ -719,7 +719,7 @@ extern "C"
 #define TAG_CERT_COMPRESS     0x71
 #define TAG_CERT_LRC          0xFE
 
-#define YKPIV_OBJ_MAX_SIZE 3072
+#define YKPIV_OBJ_MAX_SIZE 5120  // Increased for ML-DSA-87 signatures (4627 bytes)
 
 #define YKPIV_INS_VERIFY 0x20
 #define YKPIV_INS_CHANGE_REFERENCE 0x24

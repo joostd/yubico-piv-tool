@@ -76,7 +76,7 @@ option "pin-policy" - "Set pin policy for action generate or import-key. Only av
 option "touch-policy" - "Set touch policy for action generate, import-key or set-mgm-key. Only available on YubiKey 4 or newer" values="never","always","cached" enum optional
 option "id" - "Id of object for write/read object" int optional
 option "format" f "Format of data for write/read object" values="hex","base64","binary" enum optional default="hex"
-option "sign" - "Sign data" flag off hidden
+option "sign" - "Sign data from input file" flag off
 option "stdin-input" - "Read sensitive values from stdin" flag off hidden
 option "attestation" - "Add attestation cross-signature" flag off
 option "new-key-algo" m "New management key algorithm to use for action set-mgm-key" values="TDES","AES128","AES192","AES256" enum optional default="TDES"

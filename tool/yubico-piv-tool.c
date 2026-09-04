@@ -1855,7 +1855,11 @@ static bool sign_file(ykpiv_state *state, const char *input, const char *output,
     if(algo == YKPIV_ALGO_X25519) {
       fprintf(stderr, "Signing with X25519 key is not supported\n");
       goto out;
-    } else if (algo == YKPIV_ALGO_ED25519) {
+    } else if (YKPIV_IS_MLKEM(algo)) {
+      fprintf(stderr, "Signing with ML-KEM key is not supported\n");
+      goto out;
+    } else if (algo == YKPIV_ALGO_ED25519 || YKPIV_IS_MLDSA(algo)) {
+      // ED25519 and ML-DSA: send raw message to YubiKey (firmware does hashing)
       hash_len = fread(hashed, 1, sizeof(hashed), input_file);
       if(hash_len >= sizeof(hashed)) {
         fprintf(stderr, "Cannot perform signature. File too big.\n");
@@ -1898,7 +1902,7 @@ static bool sign_file(ykpiv_state *state, const char *input, const char *output,
   }
 
   {
-    unsigned char buf[1024] = {0};
+    unsigned char buf[YKPIV_OBJ_MAX_SIZE] = {0};  // Support large PQC signatures
     size_t len = sizeof(buf);
     if(!sign_data(state, hashed, hash_len, buf, &len, algo, key)) {
       fprintf(stderr, "Failed signing file\n");
@@ -2229,7 +2233,7 @@ static bool test_signature(ykpiv_state *state, enum enum_slot slot,
   }
 
   {
-    unsigned char signature[1024] = {0};
+    unsigned char signature[YKPIV_OBJ_MAX_SIZE] = {0};  // Support large PQC signatures
     unsigned char encoded[1024] = {0};
     unsigned char *ptr = data;
     unsigned int enc_len;
