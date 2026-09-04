@@ -1799,6 +1799,28 @@ static ykpiv_rc _general_authenticate(ykpiv_state *state,
       }
       // ML-DSA accepts messages of any length (firmware hashes if needed)
       break;
+    case YKPIV_ALGO_MLKEM512:
+      key_len = 768;  // ML-KEM-512 ciphertext size
+      goto mlkem_check;
+    case YKPIV_ALGO_MLKEM768:
+      if(key_len == 0) {
+        key_len = 1088;  // ML-KEM-768 ciphertext size
+      }
+      goto mlkem_check;
+    case YKPIV_ALGO_MLKEM1024:
+      if(key_len == 0) {
+        key_len = 1568;  // ML-KEM-1024 ciphertext size
+      }
+mlkem_check:
+      if(!decipher) {
+        DBG("Signing with ML-KEM keys is not supported");
+        return YKPIV_NOT_SUPPORTED;
+      }
+      if(in_len != key_len) {
+        DBG("ML-KEM ciphertext size mismatch: expected %zu, got %zu", key_len, in_len);
+        return YKPIV_SIZE_ERROR;
+      }
+      break;
     default:
       return YKPIV_ALGORITHM_ERROR;
   }
