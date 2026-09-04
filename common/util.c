@@ -132,6 +132,24 @@ unsigned char get_algorithm(EVP_PKEY *key) {
       return YKPIV_ALGO_MLKEM768;
     case NID_ML_KEM_1024:
       return YKPIV_ALGO_MLKEM1024;
+    case 0:
+    case -1:
+      // Provider-based algorithms (like PQC from PEM files) don't have a base_id
+      // Use type name instead
+      {
+        const char *type_name = EVP_PKEY_get0_type_name(key);
+        if (type_name) {
+          if (strcmp(type_name, "ML-DSA-44") == 0) return YKPIV_ALGO_MLDSA44;
+          if (strcmp(type_name, "ML-DSA-65") == 0) return YKPIV_ALGO_MLDSA65;
+          if (strcmp(type_name, "ML-DSA-87") == 0) return YKPIV_ALGO_MLDSA87;
+          if (strcmp(type_name, "ML-KEM-512") == 0) return YKPIV_ALGO_MLKEM512;
+          if (strcmp(type_name, "ML-KEM-768") == 0) return YKPIV_ALGO_MLKEM768;
+          if (strcmp(type_name, "ML-KEM-1024") == 0) return YKPIV_ALGO_MLKEM1024;
+        }
+        fprintf(stderr, "Unknown algorithm type name: %s\n", type_name ? type_name : "(null)");
+        return 0;
+      }
+      break;
 #endif
     default:
       fprintf(stderr, "Unknown algorithm %d.\n", type);

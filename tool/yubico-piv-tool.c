@@ -691,6 +691,37 @@ static bool import_key(ykpiv_state *state, enum enum_key_format key_format,
                                     pp, tp);
     }
 #endif
+#if (OPENSSL_VERSION_NUMBER >= 0x30600000L)
+    else if(YKPIV_IS_PQC(algorithm)) {
+      // PQC private keys: YubiKey expects the seed, not the full expanded key
+      // ML-DSA: 32-byte seed 'xi' (FIPS 204, section 5.1)
+      // ML-KEM: 64-byte seed 'd || z' (FIPS 203, section 7.1)
+      unsigned char s_ptr[64] = {0};
+      size_t element_len = 0;
+
+      if (EVP_PKEY_get_octet_string_param(private_key, "seed", s_ptr, sizeof(s_ptr), &element_len) != 1) {
+        fprintf(stderr, "Failed to extract PQC seed from private key.\n");
+        goto import_out;
+      }
+
+      // Validate seed size
+      size_t expected_seed_len = YKPIV_IS_MLDSA(algorithm) ? 32 : 64;
+      if (element_len != expected_seed_len) {
+        fprintf(stderr, "Invalid PQC seed size: got %zu bytes, expected %zu bytes.\n",
+                element_len, expected_seed_len);
+        goto import_out;
+      }
+
+      rc = ykpiv_import_private_key(state, key, algorithm,
+                                    NULL, 0,
+                                    NULL, 0,
+                                    NULL, 0,
+                                    NULL, 0,
+                                    NULL, 0,
+                                    s_ptr, element_len,
+                                    pp, tp);
+    }
+#endif
 
     if(rc == YKPIV_OK) {
       ret = true;

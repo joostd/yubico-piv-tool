@@ -137,7 +137,7 @@ extern "C"
                                     const unsigned char *dp, size_t dp_len,
                                     const unsigned char *dq, size_t dq_len,
                                     const unsigned char *qinv, size_t qinv_len,
-                                    const unsigned char *ec_data, unsigned char ec_data_len,
+                                    const unsigned char *ec_data, size_t ec_data_len,  // Changed to size_t for PQC support
                                     const unsigned char pin_policy, const unsigned char touch_policy);
   ykpiv_rc ykpiv_attest(ykpiv_state *state, const unsigned char key, unsigned char *data, size_t *data_len);
   ykpiv_rc ykpiv_get_metadata(ykpiv_state *state, const unsigned char key, unsigned char *data, size_t *data_len);

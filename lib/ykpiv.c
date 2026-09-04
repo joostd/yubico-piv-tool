@@ -2500,10 +2500,10 @@ ykpiv_rc ykpiv_import_private_key(ykpiv_state *state, const unsigned char key, u
                                   const unsigned char *dp, size_t dp_len,
                                   const unsigned char *dq, size_t dq_len,
                                   const unsigned char *qinv, size_t qinv_len,
-                                  const unsigned char *ec_data, unsigned char ec_data_len,
+                                  const unsigned char *ec_data, size_t ec_data_len,  // Changed to size_t for PQC support
                                   const unsigned char pin_policy, const unsigned char touch_policy) {
 
-  unsigned char key_data[2048] = {0};
+  unsigned char key_data[5120] = {0};  // Increased for PQC: ML-DSA-87 = 4896 bytes + overhead
   unsigned char *in_ptr = key_data;
   unsigned char templ[] = {0, YKPIV_INS_IMPORT_KEY, algorithm, key};
   unsigned char data[256] = {0};
@@ -2598,6 +2598,26 @@ ykpiv_rc ykpiv_import_private_key(ykpiv_state *state, const unsigned char key, u
     } else {
       param_tag = 0x08;
     }
+    n_params = 1;
+  }
+  else if (YKPIV_IS_PQC(algorithm)) {
+    // Post-Quantum Cryptography seed import (FIPS 203/204)
+    // YubiKey expects the seed, not the full expanded private key:
+    //   ML-DSA seed (xi): 32 bytes (FIPS 204, section 5.1)
+    //   ML-KEM seed (d||z): 64 bytes (FIPS 203, section 7.1)
+
+    if (YKPIV_IS_MLDSA(algorithm)) {
+      elem_len = 32;       // ML-DSA seed size
+      param_tag = 0x09;    // ML-DSA seed tag
+    } else if (YKPIV_IS_MLKEM(algorithm)) {
+      elem_len = 64;       // ML-KEM seed size (d || z)
+      param_tag = 0x0A;    // ML-KEM seed tag
+    } else {
+      return YKPIV_ALGORITHM_ERROR;
+    }
+
+    params[0] = ec_data;  // Reusing ec_data parameter for PQC seed
+    lens[0] = ec_data_len;
     n_params = 1;
   }
   else {
