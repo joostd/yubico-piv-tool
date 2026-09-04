@@ -85,7 +85,9 @@ CK_RV sign_mechanism_init(ykcs11_session_t *session, ykcs11_pkey_t *key, CK_MECH
     case CKM_RSA_PKCS_PSS:
     case CKM_ECDSA:
     case CKM_EDDSA:
+    case CKM_ML_DSA:
       // No hash required for these mechanisms
+      // ML-DSA: firmware does hashing (Hash-ML-DSA)
       break;
 
     case CKM_SHA1_RSA_PKCS:
@@ -180,13 +182,25 @@ CK_RV sign_mechanism_init(ykcs11_session_t *session, ykcs11_pkey_t *key, CK_MECH
       }
       break;
 
-    default:
+    case CKM_ECDSA:
+    case CKM_ECDSA_SHA1:
+    case CKM_ECDSA_SHA224:
+    case CKM_ECDSA_SHA256:
+    case CKM_ECDSA_SHA384:
+    case CKM_ECDSA_SHA512:
+    case CKM_EDDSA:
+    case CKM_ML_DSA:
+      // ECDSA, EdDSA, and ML-DSA don't use RSA padding
       if(session->op_info.op.sign.rsa) {
-        DBG("Mechanism %lu requires an ECDSA or EDDSA key", session->op_info.mechanism);
+        DBG("Mechanism %lu requires an ECDSA, EDDSA, or ML-DSA key", session->op_info.mechanism);
         return CKR_KEY_TYPE_INCONSISTENT;
       }
       session->op_info.op.sign.padding = 0;
       break;
+
+    default:
+      DBG("Unknown mechanism %lu", session->op_info.mechanism);
+      return CKR_MECHANISM_INVALID;
   }
 
   if(md) {
@@ -229,7 +243,7 @@ CK_RV sign_mechanism_final(ykcs11_session_t *session, CK_BYTE_PTR sig, CK_ULONG_
   }
 
   CK_ULONG padlen = session->op_info.out_len;
-  CK_BYTE buf[1024] = {0};
+  CK_BYTE buf[5120] = {0};  // Increased for ML-DSA-87 (4627 bytes)
 
   // Apply padding
   switch(session->op_info.op.sign.padding) {
@@ -261,7 +275,7 @@ CK_RV sign_mechanism_final(ykcs11_session_t *session, CK_BYTE_PTR sig, CK_ULONG_
   }
 
   // Sign with PIV
-  unsigned char sigbuf[512] = {0};
+  unsigned char sigbuf[5120] = {0};  // Increased for ML-DSA-87 (4627 bytes)
   size_t siglen = sizeof(sigbuf);
   ykpiv_rc rcc = ykpiv_sign_data(session->slot->piv_state, session->op_info.buf, session->op_info.buf_len, sigbuf, &siglen, session->op_info.op.sign.algorithm, session->op_info.op.sign.piv_key);
   if(rcc == YKPIV_OK) {

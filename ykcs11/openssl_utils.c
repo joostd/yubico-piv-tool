@@ -438,7 +438,9 @@ CK_ULONG do_get_key_size(ykcs11_pkey_t *key) {
 CK_ULONG do_get_signature_size(ykcs11_pkey_t *key) {
 
   if(key) { // EVP_PKEY_base_id doesn't handle NULL
-    switch (EVP_PKEY_base_id(key)) {
+    int base_id = EVP_PKEY_base_id(key);
+
+    switch (base_id) {
     case EVP_PKEY_RSA:
       return EVP_PKEY_size(key);
     case EVP_PKEY_EC:
@@ -451,6 +453,27 @@ CK_ULONG do_get_signature_size(ykcs11_pkey_t *key) {
       case 384:
         return 96;
       }
+      break;
+#if (OPENSSL_VERSION_NUMBER >= 0x30600000L)
+    case EVP_PKEY_ML_DSA_44:
+      return 2420;
+    case EVP_PKEY_ML_DSA_65:
+      return 3309;
+    case EVP_PKEY_ML_DSA_87:
+      return 4627;
+    case 0:
+    case -1:
+      // Provider-based algorithms may not have a base_id
+      {
+        const char *type_name = EVP_PKEY_get0_type_name(key);
+        if (type_name) {
+          if (strcmp(type_name, "ML-DSA-44") == 0) return 2420;
+          if (strcmp(type_name, "ML-DSA-65") == 0) return 3309;
+          if (strcmp(type_name, "ML-DSA-87") == 0) return 4627;
+        }
+      }
+      break;
+#endif
     }
   }
   return 0;
