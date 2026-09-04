@@ -764,16 +764,33 @@ CK_RV digest_mechanism_final(ykcs11_session_t *session, CK_BYTE_PTR pDigest, CK_
 
 CK_RV decrypt_mechanism_init(ykcs11_session_t *session, ykcs11_pkey_t *key, CK_MECHANISM_PTR mech) {
 
-  if (do_get_key_type(key) != CKK_RSA) {
-    DBG("Mechanism %lu requires an RSA key", mech->mechanism);
-    return CKR_KEY_TYPE_INCONSISTENT;
-  }
+  CK_KEY_TYPE key_type = do_get_key_type(key);
 
   session->op_info.mechanism = mech->mechanism;
   session->op_info.op.encrypt.algorithm = do_get_key_algorithm(key);
   session->op_info.op.encrypt.key = key;
   session->op_info.op.encrypt.oaep_label = NULL;
   session->op_info.op.encrypt.oaep_label_len = 0;
+
+  // ML-KEM decapsulation
+  if (mech->mechanism == CKM_ML_KEM) {
+    if (key_type != CKK_ML_KEM) {
+      DBG("CKM_ML_KEM requires an ML-KEM key");
+      return CKR_KEY_TYPE_INCONSISTENT;
+    }
+    // No padding for ML-KEM
+    session->op_info.op.encrypt.padding = 0;
+    // Store expected ciphertext size for validation
+    session->op_info.op.encrypt.mlkem_ct_size = do_get_mlkem_ciphertext_size(key);
+    DBG("ML-KEM decapsulation init: expected ciphertext size %lu", session->op_info.op.encrypt.mlkem_ct_size);
+    return CKR_OK;
+  }
+
+  // RSA decryption
+  if (key_type != CKK_RSA) {
+    DBG("Mechanism %lu requires an RSA key", mech->mechanism);
+    return CKR_KEY_TYPE_INCONSISTENT;
+  }
 
   switch (session->op_info.mechanism) {
   case CKM_RSA_X_509:
@@ -783,7 +800,7 @@ CK_RV decrypt_mechanism_init(ykcs11_session_t *session, ykcs11_pkey_t *key, CK_M
     session->op_info.op.encrypt.padding = RSA_PKCS1_PADDING;
     break;
   case CKM_RSA_PKCS_OAEP:
-    session->op_info.op.encrypt.padding = RSA_PKCS1_OAEP_PADDING;    
+    session->op_info.op.encrypt.padding = RSA_PKCS1_OAEP_PADDING;
     if(mech->pParameter == NULL || mech->ulParameterLen != sizeof(CK_RSA_PKCS_OAEP_PARAMS)) {
         return CKR_MECHANISM_PARAM_INVALID;
     }
@@ -815,7 +832,17 @@ CK_RV decrypt_mechanism_final(ykcs11_session_t *session, CK_BYTE_PTR data, CK_UL
   size_t   dec_len = sizeof(dec);
   int      cb_len;
 
-  piv_rv = ykpiv_decipher_data(session->slot->piv_state, session->op_info.buf, session->op_info.buf_len, 
+  // ML-KEM decapsulation: validate ciphertext size
+  if (session->op_info.mechanism == CKM_ML_KEM) {
+    if (session->op_info.buf_len != session->op_info.op.encrypt.mlkem_ct_size) {
+      DBG("ML-KEM ciphertext size mismatch: expected %lu, got %lu",
+          session->op_info.op.encrypt.mlkem_ct_size, session->op_info.buf_len);
+      return CKR_DATA_LEN_RANGE;
+    }
+    DBG("ML-KEM decapsulation: ciphertext size %lu bytes", session->op_info.buf_len);
+  }
+
+  piv_rv = ykpiv_decipher_data(session->slot->piv_state, session->op_info.buf, session->op_info.buf_len,
                                session->op_info.buf, &dec_len, session->op_info.op.encrypt.algorithm, session->op_info.op.encrypt.piv_key);
   if (piv_rv != YKPIV_OK) {
     if (piv_rv == YKPIV_AUTHENTICATION_ERROR) {
@@ -827,6 +854,20 @@ CK_RV decrypt_mechanism_final(ykcs11_session_t *session, CK_BYTE_PTR data, CK_UL
     }
   }
 
+  // ML-KEM: return raw shared secret (no padding)
+  if (session->op_info.mechanism == CKM_ML_KEM) {
+    DBG("ML-KEM shared secret: %zu bytes", dec_len);
+    if(dec_len > *data_len) {
+      DBG("ML-KEM shared secret too large (%zu) for provided buffer (%lu)", dec_len, *data_len);
+      *data_len = dec_len;
+      return CKR_BUFFER_TOO_SMALL;
+    }
+    memcpy(data, session->op_info.buf, dec_len);
+    *data_len = dec_len;
+    return CKR_OK;
+  }
+
+  // RSA decryption: apply padding removal
   if(session->op_info.op.encrypt.padding == RSA_PKCS1_PADDING) {
     cb_len = RSA_padding_check_PKCS1_type_2(dec, sizeof(dec), session->op_info.buf + 1, dec_len - 1, key_len/8);
   } else if(session->op_info.op.encrypt.padding == RSA_PKCS1_OAEP_PADDING) {

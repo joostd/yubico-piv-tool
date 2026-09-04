@@ -96,7 +96,7 @@ typedef struct {
 } verify_info_t;
 
 typedef struct {
-  CK_ULONG          padding;   // RSA padding, 0 for EC
+  CK_ULONG          padding;   // RSA padding, 0 for EC/ML-KEM
   ykcs11_pkey_t     *key;      // Public key
   CK_BYTE           piv_key;   // PIV Key id
   CK_BYTE           algorithm; // PIV Key algorithm
@@ -104,6 +104,7 @@ typedef struct {
   const ykcs11_md_t *mgf1_md;
   unsigned char     *oaep_label;
   CK_ULONG          oaep_label_len;
+  CK_ULONG          mlkem_ct_size; // Expected ML-KEM ciphertext size
 } encrypt_info_t;
 
 typedef union {

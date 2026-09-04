@@ -2426,14 +2426,24 @@ CK_DEFINE_FUNCTION(CK_RV, C_Decrypt)(
     goto decrypt_out;
   }
 
-  CK_ULONG key_len = do_get_key_bits(session->op_info.op.encrypt.key);
-  CK_ULONG datalen = (key_len + 7) / 8; // When RSA_NO_PADDING is used
-  if(session->op_info.op.encrypt.padding == RSA_PKCS1_PADDING) {
-    datalen -= 11;
-  } else if(session->op_info.op.encrypt.padding == RSA_PKCS1_OAEP_PADDING) {
-    datalen -= 41;
+  CK_ULONG datalen;
+  CK_ULONG key_len = 0;
+
+  // ML-KEM: shared secret is always 32 bytes
+  if (session->op_info.mechanism == CKM_ML_KEM) {
+    datalen = 32;
+    DBG("ML-KEM shared secret size: %lu bytes", datalen);
+  } else {
+    // RSA: calculate based on key size and padding
+    key_len = do_get_key_bits(session->op_info.op.encrypt.key);
+    datalen = (key_len + 7) / 8; // When RSA_NO_PADDING is used
+    if(session->op_info.op.encrypt.padding == RSA_PKCS1_PADDING) {
+      datalen -= 11;
+    } else if(session->op_info.op.encrypt.padding == RSA_PKCS1_OAEP_PADDING) {
+      datalen -= 41;
+    }
+    DBG("The maximum size of the data will be %lu", datalen);
   }
-  DBG("The maximum size of the data will be %lu", datalen);
 
   if (pData == NULL) {
     // Just return the size of the decrypted data

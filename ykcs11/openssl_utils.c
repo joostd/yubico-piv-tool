@@ -479,6 +479,39 @@ CK_ULONG do_get_signature_size(ykcs11_pkey_t *key) {
   return 0;
 }
 
+CK_ULONG do_get_mlkem_ciphertext_size(ykcs11_pkey_t *key) {
+  // Returns ML-KEM ciphertext size for decapsulation
+  // ML-KEM-512: 768 bytes, ML-KEM-768: 1088 bytes, ML-KEM-1024: 1568 bytes
+
+  if(key) {
+#if (OPENSSL_VERSION_NUMBER >= 0x30600000L)
+    int base_id = EVP_PKEY_base_id(key);
+
+    switch (base_id) {
+    case NID_ML_KEM_512:
+      return 768;
+    case NID_ML_KEM_768:
+      return 1088;
+    case NID_ML_KEM_1024:
+      return 1568;
+    case 0:
+    case -1:
+      // Provider-based algorithms may not have a base_id
+      {
+        const char *type_name = EVP_PKEY_get0_type_name(key);
+        if (type_name) {
+          if (strcmp(type_name, "ML-KEM-512") == 0) return 768;
+          if (strcmp(type_name, "ML-KEM-768") == 0) return 1088;
+          if (strcmp(type_name, "ML-KEM-1024") == 0) return 1568;
+        }
+      }
+      break;
+    }
+#endif
+  }
+  return 0;
+}
+
 CK_BYTE do_get_key_algorithm(ykcs11_pkey_t *key) {
 
   if(key) { // EVP_PKEY_base_id doesn't handle NULL
