@@ -37,6 +37,11 @@
 #include "utils.h"
 #include "debug.h"
 
+#if (OPENSSL_VERSION_NUMBER >= 0x30200000L)
+#include <openssl/params.h>
+#include <openssl/core_names.h>
+#endif
+
 // Supported mechanisms for key pair generation
 static const CK_MECHANISM_TYPE generation_mechanisms[] = {
   CKM_RSA_PKCS_KEY_PAIR_GEN,
@@ -343,16 +348,25 @@ CK_RV verify_mechanism_init(ykcs11_session_t *session, ykcs11_pkey_t *key, CK_ME
   session->op_info.mechanism = mech->mechanism;
   session->op_info.op.verify.pkey_ctx = NULL;
   bool is_eddsa = false;
+  bool is_mldsa = false;
 
   switch (session->op_info.mechanism) {
     case CKM_EDDSA:
       is_eddsa = true;
+      // Fall through
+
+    case CKM_ML_DSA:
+      if (session->op_info.mechanism == CKM_ML_DSA) {
+        is_mldsa = true;
+      }
+      // Fall through
 
     case CKM_RSA_X_509:
     case CKM_RSA_PKCS:
     case CKM_RSA_PKCS_PSS:
     case CKM_ECDSA:
       // No hash required for these mechanisms
+      // EdDSA and ML-DSA: message is hashed internally
       break;
 
     case CKM_SHA1_RSA_PKCS:
@@ -440,12 +454,21 @@ CK_RV verify_mechanism_init(ykcs11_session_t *session, ykcs11_pkey_t *key, CK_ME
   }
 
   if(md || is_eddsa) {
+    // EdDSA and mechanisms with digest use EVP_DigestVerify
     session->op_info.md_ctx = EVP_MD_CTX_create();
     if (session->op_info.md_ctx == NULL) {
       return CKR_FUNCTION_FAILED;
     }
     if (EVP_DigestVerifyInit(session->op_info.md_ctx, &session->op_info.op.verify.pkey_ctx, md, NULL, key) <= 0) {
       DBG("EVP_DigestVerifyInit failed");
+      return CKR_FUNCTION_FAILED;
+    }
+  } else if (is_mldsa) {
+    // ML-DSA uses message-based API, create pkey_ctx only
+    session->op_info.md_ctx = NULL;
+    session->op_info.op.verify.pkey_ctx = EVP_PKEY_CTX_new(key, NULL);
+    if (session->op_info.op.verify.pkey_ctx == NULL) {
+      DBG("EVP_PKEY_CTX_new failed for ML-DSA");
       return CKR_FUNCTION_FAILED;
     }
   } else {
@@ -505,12 +528,56 @@ CK_RV verify_mechanism_final(ykcs11_session_t *session, CK_BYTE_PTR sig, CK_ULON
   int rc;
 #if (OPENSSL_VERSION_NUMBER >= 0x10100000L)
   if (session->op_info.mechanism == CKM_EDDSA) {
+    // EdDSA: verify raw message with raw signature (no DER encoding)
     rc = EVP_DigestVerify(session->op_info.md_ctx, sig, sig_len, session->op_info.buf, session->op_info.buf_len);
     if(rc <= 0) {
-      DBG("EVP_PKEY_verify failed");
+      DBG("EVP_DigestVerify failed");
       return rc < 0 ? CKR_FUNCTION_FAILED : CKR_SIGNATURE_INVALID;
     }
     return CKR_OK;
+  }
+#endif
+
+#if (OPENSSL_VERSION_NUMBER >= 0x30200000L)
+  // ML-DSA requires message-based verification API (OpenSSL 3.2+)
+  if (session->op_info.mechanism == CKM_ML_DSA) {
+    DBG("ML-DSA verification: sig_len=%lu, msg_len=%lu", sig_len, session->op_info.buf_len);
+
+    // Set signature as parameter
+    OSSL_PARAM params[2];
+    params[0] = OSSL_PARAM_construct_octet_string(
+        OSSL_SIGNATURE_PARAM_SIGNATURE,
+        (void *)sig, sig_len);
+    params[1] = OSSL_PARAM_construct_end();
+
+    // Initialize message-based verification with signature
+    rc = EVP_PKEY_verify_message_init(session->op_info.op.verify.pkey_ctx, NULL, params);
+    if (rc <= 0) {
+      DBG("EVP_PKEY_verify_message_init failed");
+      return CKR_FUNCTION_FAILED;
+    }
+
+    // Update with message data
+    rc = EVP_PKEY_verify_message_update(session->op_info.op.verify.pkey_ctx,
+                                         session->op_info.buf,
+                                         session->op_info.buf_len);
+    if (rc <= 0) {
+      DBG("EVP_PKEY_verify_message_update failed");
+      return CKR_FUNCTION_FAILED;
+    }
+
+    // Finalize verification
+    rc = EVP_PKEY_verify_message_final(session->op_info.op.verify.pkey_ctx);
+    if (rc == 1) {
+      DBG("ML-DSA signature verification SUCCESS");
+      return CKR_OK;
+    } else if (rc == 0) {
+      DBG("ML-DSA signature verification failed: signature invalid");
+      return CKR_SIGNATURE_INVALID;
+    } else {
+      DBG("ML-DSA signature verification error");
+      return CKR_FUNCTION_FAILED;
+    }
   }
 #endif
 
