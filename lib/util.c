@@ -39,6 +39,9 @@
 #include "internal.h"
 #include "ykpiv.h"
 
+// Forward declaration from common/util.h for PQC public key parsing
+unsigned long get_length(const unsigned char*, const unsigned char*, unsigned long*);
+
 #define MAX(a,b) (a) > (b) ? (a) : (b)
 #define MIN(a,b) (a) < (b) ? (a) : (b)
 
@@ -766,7 +769,7 @@ ykpiv_rc ykpiv_util_generate_key(ykpiv_state *state, uint8_t slot, uint8_t algor
   ykpiv_rc res = YKPIV_OK;
   unsigned char in_data[11] = {0};
   unsigned char *in_ptr = in_data;
-  unsigned char data[1024] = {0};
+  unsigned char data[3072] = {0};  // Increased for PQC: ML-DSA-87 = 2592 bytes + TLV overhead
   unsigned char templ[] = { 0, YKPIV_INS_GENERATE_ASYMMETRIC, 0, 0 };
   unsigned long recv_len = sizeof(data);
   int sw = 0;
@@ -848,6 +851,20 @@ ykpiv_rc ykpiv_util_generate_key(ykpiv_state *state, uint8_t slot, uint8_t algor
   case YKPIV_ALGO_X25519:
     if (!point || !point_len) {
       DBG("Invalid output parameter for ECC algorithm");
+      return YKPIV_ARGUMENT_ERROR;
+    }
+    *point = NULL;
+    *point_len = 0;
+    break;
+
+  case YKPIV_ALGO_MLDSA44:
+  case YKPIV_ALGO_MLDSA65:
+  case YKPIV_ALGO_MLDSA87:
+  case YKPIV_ALGO_MLKEM512:
+  case YKPIV_ALGO_MLKEM768:
+  case YKPIV_ALGO_MLKEM1024:
+    if (!point || !point_len) {
+      DBG("Invalid output parameter for PQC algorithm");
       return YKPIV_ARGUMENT_ERROR;
     }
     *point = NULL;
@@ -997,6 +1014,50 @@ ykpiv_rc ykpiv_util_generate_key(ykpiv_state *state, uint8_t slot, uint8_t algor
 
     // set output parameters
 
+    *point = ptr_point;
+    ptr_point = NULL;
+    *point_len = cb_point;
+  }
+  else if (YKPIV_IS_PQC(algorithm)) {
+    // PQC public keys are encoded with tag 0x87 (ML-DSA) or 0x88 (ML-KEM)
+    // Response format: 7f49 <len> <tag> <keylen> <key>
+    // Need to skip the outer 7f49 wrapper first
+    unsigned char *data_ptr = data;
+    unsigned char expected_tag = YKPIV_IS_MLDSA(algorithm) ? 0x87 : 0x88;
+    size_t len = 0;
+
+    // Skip outer tag 7f49
+    if (*data_ptr++ != 0x7f || *data_ptr++ != 0x49) {
+      DBG("Failed to parse PQC response - missing outer wrapper.");
+      res = YKPIV_PARSE_ERROR;
+      goto Cleanup;
+    }
+
+    // Skip outer length
+    offs = get_length(data_ptr, data + recv_len, &len);
+    data_ptr += offs;
+
+    // Now we should be at the PQC tag (0x87 or 0x88)
+    if (*data_ptr++ != expected_tag) {
+      DBG("Failed to parse PQC public key structure - wrong tag.");
+      res = YKPIV_PARSE_ERROR;
+      goto Cleanup;
+    }
+
+    // Get the key length
+    offs = get_length(data_ptr, data + recv_len, &len);
+    data_ptr += offs;
+
+    cb_point = len;
+    if (NULL == (ptr_point = _ykpiv_alloc(state, cb_point))) {
+      DBG("Failed to allocate memory for PQC public key.");
+      res = YKPIV_MEMORY_ERROR;
+      goto Cleanup;
+    }
+
+    memcpy(ptr_point, data_ptr, cb_point);
+
+    // set output parameters
     *point = ptr_point;
     ptr_point = NULL;
     *point_len = cb_point;

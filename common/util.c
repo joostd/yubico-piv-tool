@@ -597,6 +597,18 @@ unsigned char get_piv_algorithm(enum enum_algorithm algorithm) {
       return YKPIV_ALGO_ED25519;
     case algorithm_arg_X25519:
       return YKPIV_ALGO_X25519;
+    case algorithm_arg_MLMINUS_DSAMINUS_44:
+      return YKPIV_ALGO_MLDSA44;
+    case algorithm_arg_MLMINUS_DSAMINUS_65:
+      return YKPIV_ALGO_MLDSA65;
+    case algorithm_arg_MLMINUS_DSAMINUS_87:
+      return YKPIV_ALGO_MLDSA87;
+    case algorithm_arg_MLMINUS_KEMMINUS_512:
+      return YKPIV_ALGO_MLKEM512;
+    case algorithm_arg_MLMINUS_KEMMINUS_768:
+      return YKPIV_ALGO_MLKEM768;
+    case algorithm_arg_MLMINUS_KEMMINUS_1024:
+      return YKPIV_ALGO_MLKEM1024;
     case algorithm__NULL:
     default:
       return 0;

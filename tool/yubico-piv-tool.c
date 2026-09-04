@@ -421,6 +421,36 @@ static bool generate_key(ykpiv_state *state, enum enum_slot slot,
                         "Upgrade OpenSSL to at least 1.1 or use attestation command to get a signed certificate instead.\n");
         return true;
 #endif
+#if (OPENSSL_VERSION_NUMBER >= 0x30600000L)
+      case algorithm_arg_MLMINUS_DSAMINUS_44:
+        public_key = EVP_PKEY_new_raw_public_key(EVP_PKEY_ML_DSA_44, NULL, point, point_len);
+        break;
+      case algorithm_arg_MLMINUS_DSAMINUS_65:
+        public_key = EVP_PKEY_new_raw_public_key(EVP_PKEY_ML_DSA_65, NULL, point, point_len);
+        break;
+      case algorithm_arg_MLMINUS_DSAMINUS_87:
+        public_key = EVP_PKEY_new_raw_public_key(EVP_PKEY_ML_DSA_87, NULL, point, point_len);
+        break;
+      case algorithm_arg_MLMINUS_KEMMINUS_512:
+        public_key = EVP_PKEY_new_raw_public_key(NID_ML_KEM_512, NULL, point, point_len);
+        break;
+      case algorithm_arg_MLMINUS_KEMMINUS_768:
+        public_key = EVP_PKEY_new_raw_public_key(NID_ML_KEM_768, NULL, point, point_len);
+        break;
+      case algorithm_arg_MLMINUS_KEMMINUS_1024:
+        public_key = EVP_PKEY_new_raw_public_key(NID_ML_KEM_1024, NULL, point, point_len);
+        break;
+#else
+      case algorithm_arg_MLMINUS_DSAMINUS_44:
+      case algorithm_arg_MLMINUS_DSAMINUS_65:
+      case algorithm_arg_MLMINUS_DSAMINUS_87:
+      case algorithm_arg_MLMINUS_KEMMINUS_512:
+      case algorithm_arg_MLMINUS_KEMMINUS_768:
+      case algorithm_arg_MLMINUS_KEMMINUS_1024:
+        fprintf(stderr, "Key was generated successfully but a public key cannot be parsed due to too old OpenSSL version. "
+                        "Upgrade OpenSSL to at least 3.6 or use attestation command to get a signed certificate instead.\n");
+        return true;
+#endif
       default:
         fprintf(stderr, "Wrong algorithm.\n");
     }
