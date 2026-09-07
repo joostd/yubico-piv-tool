@@ -873,7 +873,7 @@ static CK_RV get_proa(ykcs11_slot_t *s, piv_obj_id_t obj, CK_ATTRIBUTE_PTR templ
 /* Get public key object attribute */
 static CK_RV get_puoa(ykcs11_slot_t *s, piv_obj_id_t obj, CK_ATTRIBUTE_PTR template) {
   CK_BYTE_PTR data;
-  CK_BYTE     b_tmp[1024] = {0};
+  CK_BYTE     b_tmp[8192] = {0};  // Increased for ML-DSA-87 (up to ~8KB with DER encoding)
   CK_ULONG    ul_tmp;
   CK_ULONG    len = 0;
   CK_RV       rv;
@@ -1571,7 +1571,7 @@ CK_RV get_attribute(ykcs11_slot_t *s, piv_obj_id_t obj, CK_ATTRIBUTE_PTR templat
 
 CK_BBOOL attribute_match(ykcs11_slot_t *s, piv_obj_id_t obj, CK_ATTRIBUTE_PTR attribute) {
 
-  CK_BYTE data[4096] = {0};
+  CK_BYTE data[8192] = {0};  // Increased for ML-DSA-87 (up to ~8KB with DER encoding)
   CK_ATTRIBUTE to_match = { attribute->type, data, sizeof(data) };
 
   if (get_attribute(s, obj, &to_match) != CKR_OK)
