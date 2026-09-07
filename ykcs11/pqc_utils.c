@@ -34,25 +34,25 @@
 #include <string.h>
 
 // NIST OIDs for ML-DSA parameter sets (DER-encoded)
-// Format: 06 0B (OID tag + length) + OID bytes
+// Format: 06 09 (OID tag + content length) + 9 OID content bytes = 11 bytes total
 
 // OID 2.16.840.1.101.3.4.3.17 (ML-DSA-44)
 const CK_BYTE MLDSA44_OID[PQC_OID_LENGTH] = {
-  0x06, 0x0B,                                     // OID tag + length
+  0x06, 0x09,                                     // OID tag + length
   0x60, 0x86, 0x48, 0x01, 0x65,                  // 2.16.840.1.101
   0x03, 0x04, 0x03, 0x11                         // .3.4.3.17
 };
 
 // OID 2.16.840.1.101.3.4.3.18 (ML-DSA-65)
 const CK_BYTE MLDSA65_OID[PQC_OID_LENGTH] = {
-  0x06, 0x0B,
+  0x06, 0x09,
   0x60, 0x86, 0x48, 0x01, 0x65,
   0x03, 0x04, 0x03, 0x12                         // .3.4.3.18
 };
 
 // OID 2.16.840.1.101.3.4.3.19 (ML-DSA-87)
 const CK_BYTE MLDSA87_OID[PQC_OID_LENGTH] = {
-  0x06, 0x0B,
+  0x06, 0x09,
   0x60, 0x86, 0x48, 0x01, 0x65,
   0x03, 0x04, 0x03, 0x13                         // .3.4.3.19
 };
@@ -61,21 +61,21 @@ const CK_BYTE MLDSA87_OID[PQC_OID_LENGTH] = {
 
 // OID 2.16.840.1.101.3.4.4.1 (ML-KEM-512)
 const CK_BYTE MLKEM512_OID[PQC_OID_LENGTH] = {
-  0x06, 0x0B,
+  0x06, 0x09,
   0x60, 0x86, 0x48, 0x01, 0x65,
   0x03, 0x04, 0x04, 0x01                         // .3.4.4.1
 };
 
 // OID 2.16.840.1.101.3.4.4.2 (ML-KEM-768)
 const CK_BYTE MLKEM768_OID[PQC_OID_LENGTH] = {
-  0x06, 0x0B,
+  0x06, 0x09,
   0x60, 0x86, 0x48, 0x01, 0x65,
   0x03, 0x04, 0x04, 0x02                         // .3.4.4.2
 };
 
 // OID 2.16.840.1.101.3.4.4.3 (ML-KEM-1024)
 const CK_BYTE MLKEM1024_OID[PQC_OID_LENGTH] = {
-  0x06, 0x0B,
+  0x06, 0x09,
   0x60, 0x86, 0x48, 0x01, 0x65,
   0x03, 0x04, 0x04, 0x03                         // .3.4.4.3
 };
@@ -132,6 +132,65 @@ const CK_BYTE* piv_algorithm_to_oid(unsigned char algorithm, CK_ULONG *oid_len) 
       }
       return NULL;
   }
+}
+
+CK_BBOOL piv_algorithm_to_parameter_set(unsigned char algorithm, CK_ULONG *param_set) {
+  if (param_set == NULL) {
+    return CK_FALSE;
+  }
+
+  switch (algorithm) {
+    case YKPIV_ALGO_MLDSA44:
+      *param_set = CKP_ML_DSA_44;
+      return CK_TRUE;
+    case YKPIV_ALGO_MLDSA65:
+      *param_set = CKP_ML_DSA_65;
+      return CK_TRUE;
+    case YKPIV_ALGO_MLDSA87:
+      *param_set = CKP_ML_DSA_87;
+      return CK_TRUE;
+    case YKPIV_ALGO_MLKEM512:
+      *param_set = CKP_ML_KEM_512;
+      return CK_TRUE;
+    case YKPIV_ALGO_MLKEM768:
+      *param_set = CKP_ML_KEM_768;
+      return CK_TRUE;
+    case YKPIV_ALGO_MLKEM1024:
+      *param_set = CKP_ML_KEM_1024;
+      return CK_TRUE;
+    default:
+      return CK_FALSE;
+  }
+}
+
+unsigned char parameter_set_to_piv_algorithm(CK_ULONG param_set, CK_MECHANISM_TYPE mechanism) {
+  if (mechanism == CKM_ML_DSA_KEY_PAIR_GEN) {
+    switch (param_set) {
+      case CKP_ML_DSA_44:
+        return YKPIV_ALGO_MLDSA44;
+      case CKP_ML_DSA_65:
+        return YKPIV_ALGO_MLDSA65;
+      case CKP_ML_DSA_87:
+        return YKPIV_ALGO_MLDSA87;
+      default:
+        return 0;
+    }
+  }
+
+  if (mechanism == CKM_ML_KEM_KEY_PAIR_GEN) {
+    switch (param_set) {
+      case CKP_ML_KEM_512:
+        return YKPIV_ALGO_MLKEM512;
+      case CKP_ML_KEM_768:
+        return YKPIV_ALGO_MLKEM768;
+      case CKP_ML_KEM_1024:
+        return YKPIV_ALGO_MLKEM1024;
+      default:
+        return 0;
+    }
+  }
+
+  return 0;
 }
 
 size_t pqc_get_public_key_size(unsigned char algorithm) {

@@ -71,6 +71,27 @@ unsigned char oid_to_piv_algorithm(const CK_BYTE *oid, CK_ULONG oid_len);
 const CK_BYTE* piv_algorithm_to_oid(unsigned char algorithm, CK_ULONG *oid_len);
 
 /**
+ * Map PIV algorithm ID to a PKCS#11 v3.2 CKA_PARAMETER_SET value
+ *
+ * @param algorithm PIV algorithm ID (0xE2-0xE7)
+ * @param param_set Output: CKP_ML_DSA_* / CKP_ML_KEM_* value
+ * @return CK_TRUE on success, CK_FALSE if the algorithm is not a PQC algorithm
+ */
+CK_BBOOL piv_algorithm_to_parameter_set(unsigned char algorithm, CK_ULONG *param_set);
+
+/**
+ * Map a PKCS#11 v3.2 CKA_PARAMETER_SET value to a PIV algorithm ID
+ *
+ * The CKP_ML_DSA_* and CKP_ML_KEM_* values overlap (both start at 1), so the
+ * key pair generation mechanism is needed to disambiguate.
+ *
+ * @param param_set CKP_ML_DSA_* / CKP_ML_KEM_* value
+ * @param mechanism CKM_ML_DSA_KEY_PAIR_GEN or CKM_ML_KEM_KEY_PAIR_GEN
+ * @return PIV algorithm ID (0xE2-0xE7), or 0 if unknown/invalid
+ */
+unsigned char parameter_set_to_piv_algorithm(CK_ULONG param_set, CK_MECHANISM_TYPE mechanism);
+
+/**
  * Get public key size for a PIV PQC algorithm
  *
  * @param algorithm PIV algorithm ID (0xE2-0xE7)

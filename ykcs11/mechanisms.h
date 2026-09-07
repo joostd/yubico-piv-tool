@@ -44,7 +44,17 @@
 #define CKM_ML_KEM                     0x00000017UL  // ML-KEM encapsulate/decapsulate
 #define CKK_ML_DSA                     0x0000004aUL  // ML-DSA key type
 #define CKK_ML_KEM                     0x00000049UL  // ML-KEM key type
-#define CKA_PARAMETER_SET              0x0000061dUL  // Parameter set selection (OID)
+#define CKA_PARAMETER_SET              0x0000061dUL  // Parameter set selection (CK_ULONG)
+
+// CKA_PARAMETER_SET values. PKCS#11 v3.2 types these as CK_ML_DSA_PARAMETER_SET_TYPE
+// / CK_ML_KEM_PARAMETER_SET_TYPE, both CK_ULONG, so the value is a small enum and
+// not the DER-encoded NIST OID.
+#define CKP_ML_DSA_44                  0x00000001UL
+#define CKP_ML_DSA_65                  0x00000002UL
+#define CKP_ML_DSA_87                  0x00000003UL
+#define CKP_ML_KEM_512                 0x00000001UL
+#define CKP_ML_KEM_768                 0x00000002UL
+#define CKP_ML_KEM_1024                0x00000003UL
 #endif
 
 CK_RV sign_mechanism_init(ykcs11_session_t *session, ykcs11_pkey_t *key, CK_MECHANISM_PTR mech);

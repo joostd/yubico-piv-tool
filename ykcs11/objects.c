@@ -776,7 +776,7 @@ static CK_RV get_proa(ykcs11_slot_t *s, piv_obj_id_t obj, CK_ATTRIBUTE_PTR templ
     break;
 
   case CKA_PARAMETER_SET:
-    // PKCS#11 v3.2 - PQC parameter set (DER-encoded OID)
+    // PKCS#11 v3.2 - PQC parameter set, a CK_ULONG (CKP_ML_DSA_* / CKP_ML_KEM_*)
     DBG("PARAMETER_SET (PQC)");
 
     // Make sure this is a PQC key
@@ -784,23 +784,13 @@ static CK_RV get_proa(ykcs11_slot_t *s, piv_obj_id_t obj, CK_ATTRIBUTE_PTR templ
     if (ul_tmp != CKK_ML_DSA && ul_tmp != CKK_ML_KEM)
       return CKR_ATTRIBUTE_TYPE_INVALID;
 
-    // Get PIV algorithm ID from key
     {
       unsigned char piv_algorithm = do_get_key_algorithm(s->pkeys[piv_objects[obj].sub_id]);
-      if (piv_algorithm == 0)
+      if (!piv_algorithm_to_parameter_set(piv_algorithm, &ul_tmp))
         return CKR_FUNCTION_FAILED;
-
-      // Map PIV algorithm to NIST OID
-      const CK_BYTE *oid = piv_algorithm_to_oid(piv_algorithm, (CK_ULONG*)&len);
-      if (oid == NULL)
-        return CKR_FUNCTION_FAILED;
-
-      if (len > sizeof(b_tmp))
-        return CKR_BUFFER_TOO_SMALL;
-
-      memcpy(b_tmp, oid, len);
-      data = b_tmp;
     }
+    len = sizeof(CK_ULONG);
+    data = (CK_BYTE_PTR) &ul_tmp;
     break;
 
   case CKA_ALWAYS_AUTHENTICATE:
@@ -1123,7 +1113,7 @@ static CK_RV get_puoa(ykcs11_slot_t *s, piv_obj_id_t obj, CK_ATTRIBUTE_PTR templ
     break;
 
   case CKA_PARAMETER_SET:
-    // PKCS#11 v3.2 - PQC parameter set (DER-encoded OID)
+    // PKCS#11 v3.2 - PQC parameter set, a CK_ULONG (CKP_ML_DSA_* / CKP_ML_KEM_*)
     DBG("PARAMETER_SET (PQC)");
 
     // Make sure this is a PQC key
@@ -1131,23 +1121,13 @@ static CK_RV get_puoa(ykcs11_slot_t *s, piv_obj_id_t obj, CK_ATTRIBUTE_PTR templ
     if (ul_tmp != CKK_ML_DSA && ul_tmp != CKK_ML_KEM)
       return CKR_ATTRIBUTE_TYPE_INVALID;
 
-    // Get PIV algorithm ID from key
     {
       unsigned char piv_algorithm = do_get_key_algorithm(s->pkeys[piv_objects[obj].sub_id]);
-      if (piv_algorithm == 0)
+      if (!piv_algorithm_to_parameter_set(piv_algorithm, &ul_tmp))
         return CKR_FUNCTION_FAILED;
-
-      // Map PIV algorithm to NIST OID
-      const CK_BYTE *oid = piv_algorithm_to_oid(piv_algorithm, (CK_ULONG*)&len);
-      if (oid == NULL)
-        return CKR_FUNCTION_FAILED;
-
-      if (len > sizeof(b_tmp))
-        return CKR_BUFFER_TOO_SMALL;
-
-      memcpy(b_tmp, oid, len);
-      data = b_tmp;
     }
+    len = sizeof(CK_ULONG);
+    data = (CK_BYTE_PTR) &ul_tmp;
     break;
 
   case CKA_MODIFIABLE:
@@ -3012,25 +2992,31 @@ static CK_RV check_pqc_pubkey_template(gen_info_t *gen, CK_MECHANISM_PTR mechani
         break;
 
       case CKA_PARAMETER_SET:
-        // Map PKCS#11 OID to PIV algorithm ID
-        gen->algorithm = oid_to_piv_algorithm((CK_BYTE_PTR)templ[i].pValue, templ[i].ulValueLen);
+        // PKCS#11 v3.2 passes a CK_ULONG (CKP_ML_DSA_* / CKP_ML_KEM_*). Earlier
+        // drafts and some callers pass the DER-encoded NIST OID, so accept both.
+        if (templ[i].ulValueLen == sizeof(CK_ULONG)) {
+          gen->algorithm = parameter_set_to_piv_algorithm(*((CK_ULONG *)templ[i].pValue),
+                                                          mechanism->mechanism);
+        } else {
+          gen->algorithm = oid_to_piv_algorithm((CK_BYTE_PTR)templ[i].pValue, templ[i].ulValueLen);
+        }
         if (gen->algorithm == 0) {
-          DBG("Invalid or unknown CKA_PARAMETER_SET OID");
+          DBG("Invalid or unknown CKA_PARAMETER_SET");
           return CKR_ATTRIBUTE_VALUE_INVALID;
         }
 
         // Verify algorithm matches mechanism
         if (mechanism->mechanism == CKM_ML_DSA_KEY_PAIR_GEN && !YKPIV_IS_MLDSA(gen->algorithm)) {
-          DBG("CKA_PARAMETER_SET OID is not for ML-DSA");
+          DBG("CKA_PARAMETER_SET is not for ML-DSA");
           return CKR_ATTRIBUTE_VALUE_INVALID;
         }
         if (mechanism->mechanism == CKM_ML_KEM_KEY_PAIR_GEN && !YKPIV_IS_MLKEM(gen->algorithm)) {
-          DBG("CKA_PARAMETER_SET OID is not for ML-KEM");
+          DBG("CKA_PARAMETER_SET is not for ML-KEM");
           return CKR_ATTRIBUTE_VALUE_INVALID;
         }
 
         found_parameter_set = CK_TRUE;
-        DBG("Mapped CKA_PARAMETER_SET OID to PIV algorithm 0x%02x", gen->algorithm);
+        DBG("Mapped CKA_PARAMETER_SET to PIV algorithm 0x%02x", gen->algorithm);
         break;
 
       case CKA_ID:
