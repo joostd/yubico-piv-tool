@@ -684,7 +684,16 @@ CK_RV do_get_public_key(ykcs11_pkey_t *key, CK_BYTE_PTR data, CK_ULONG_PTR len) 
   case EVP_PKEY_ML_DSA_87:
   case NID_ML_KEM_512:
   case NID_ML_KEM_768:
-  case NID_ML_KEM_1024: {
+  case NID_ML_KEM_1024:
+  // Provider-based algorithms may not have a base_id, so match on the type name
+  case 0:
+  case -1: {
+      const char *type_name = EVP_PKEY_get0_type_name(key);
+      if (type_name == NULL
+          || (strncmp(type_name, "ML-DSA", 6) != 0
+              && strncmp(type_name, "ML-KEM", 6) != 0)) {
+        return CKR_FUNCTION_FAILED;
+      }
       // PQC keys: raw public key bytes
       size_t n = *len;
       if(EVP_PKEY_get_raw_public_key(key, data, &n) != 1) {

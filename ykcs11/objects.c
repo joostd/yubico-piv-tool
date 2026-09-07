@@ -1130,6 +1130,42 @@ static CK_RV get_puoa(ykcs11_slot_t *s, piv_obj_id_t obj, CK_ATTRIBUTE_PTR templ
     data = (CK_BYTE_PTR) &ul_tmp;
     break;
 
+  case CKA_VALUE:
+    // PKCS#11 v3.2 - PQC public key value (raw bytes)
+    DBG("VALUE (PQC public key)");
+
+    // Make sure this is a PQC key
+    ul_tmp = do_get_key_type(s->pkeys[piv_objects[obj].sub_id]);
+    if (ul_tmp != CKK_ML_DSA && ul_tmp != CKK_ML_KEM)
+      return CKR_ATTRIBUTE_TYPE_INVALID;
+
+    len = sizeof(b_tmp);
+    if ((rv = do_get_public_key(s->pkeys[piv_objects[obj].sub_id], b_tmp, &len)) != CKR_OK)
+      return rv;
+    data = b_tmp;
+    break;
+
+  case CKA_PUBLIC_KEY_INFO:
+    // PKCS#11 v3.0 - SubjectPublicKeyInfo (DER-encoded)
+    DBG("PUBLIC_KEY_INFO");
+    len = sizeof(b_tmp);
+    {
+      ykcs11_pkey_t *key = s->pkeys[piv_objects[obj].sub_id];
+      if (key == NULL)
+        return CKR_FUNCTION_FAILED;
+
+      unsigned char *p = b_tmp;
+      int der_len = i2d_PUBKEY(key, &p);
+      if (der_len <= 0)
+        return CKR_FUNCTION_FAILED;
+      if ((size_t)der_len > sizeof(b_tmp))
+        return CKR_BUFFER_TOO_SMALL;
+
+      len = der_len;
+      data = b_tmp;
+    }
+    break;
+
   case CKA_MODIFIABLE:
     DBG("MODIFIABLE");
     len = sizeof(CK_BBOOL);
