@@ -31,6 +31,7 @@
 #include "../../common/openssl-compat.h"
 #include "../ykcs11.h"
 #include "../ykcs11-config.h"
+#include "../mechanisms.h" // for the PKCS#11 v3.2 PQC mechanism definitions
 
 #include <string.h>
 
@@ -206,9 +207,19 @@ static void test_mechanism_list_and_info() {
       CKM_SHA512,
       CKM_EC_EDWARDS_KEY_PAIR_GEN,
       CKM_EC_MONTGOMERY_KEY_PAIR_GEN,
-      CKM_EDDSA,};
+      CKM_EDDSA,
+      // Post-Quantum Cryptography (PKCS#11 v3.2)
+      CKM_ML_DSA_KEY_PAIR_GEN,
+      CKM_ML_DSA,
+      CKM_HASH_ML_DSA_SHA256,
+      CKM_HASH_ML_DSA_SHA512,
+      CKM_ML_KEM_KEY_PAIR_GEN,
+      CKM_ML_KEM,};
 
-  static const CK_MECHANISM_INFO token_mechanism_infos_3[] = { // KEEP ALIGNED WITH token_mechanisms
+  // KEEP ALIGNED WITH token_mechanisms. The token reports the same mechanism info
+  // on every firmware -- token.c builds this list from compile-time constants -- so
+  // there is no separate pre-5.70 table to compare against.
+  static const CK_MECHANISM_INFO token_mechanism_infos[] = {
     {1024, 4096, CKF_HW | CKF_GENERATE_KEY_PAIR},
     {1024, 4096, CKF_HW | CKF_ENCRYPT | CKF_DECRYPT | CKF_SIGN | CKF_VERIFY},
     {1024, 4096, CKF_HW | CKF_SIGN | CKF_VERIFY},
@@ -236,38 +247,17 @@ static void test_mechanism_list_and_info() {
     {0, 0, CKF_DIGEST},
     {255, 255, CKF_HW | CKF_GENERATE_KEY_PAIR | CKF_EC_F_P | CKF_EC_NAMEDCURVE | CKF_EC_UNCOMPRESS},
     {255, 255, CKF_HW | CKF_GENERATE_KEY_PAIR | CKF_EC_F_P | CKF_EC_NAMEDCURVE | CKF_EC_UNCOMPRESS},
-    {255, 255, CKF_HW | CKF_SIGN | CKF_VERIFY | CKF_EC_F_P | CKF_EC_NAMEDCURVE | CKF_EC_UNCOMPRESS}
-};
-
-  static const CK_MECHANISM_INFO token_mechanism_infos[] = { // KEEP ALIGNED WITH token_mechanisms
-      {1024, 2048, CKF_HW | CKF_GENERATE_KEY_PAIR},
-      {1024, 2048, CKF_HW | CKF_ENCRYPT | CKF_DECRYPT | CKF_SIGN | CKF_VERIFY},
-      {1024, 2048, CKF_HW | CKF_SIGN | CKF_VERIFY},
-      {1024, 2048, CKF_HW | CKF_ENCRYPT | CKF_DECRYPT},
-      {1024, 2048, CKF_HW | CKF_ENCRYPT | CKF_DECRYPT | CKF_SIGN | CKF_VERIFY},
-      {1024, 2048, CKF_HW | CKF_SIGN | CKF_VERIFY},
-      {1024, 2048, CKF_HW | CKF_SIGN | CKF_VERIFY},
-      {1024, 2048, CKF_HW | CKF_SIGN | CKF_VERIFY},
-      {1024, 2048, CKF_HW | CKF_SIGN | CKF_VERIFY},
-      {1024, 2048, CKF_HW | CKF_SIGN | CKF_VERIFY},
-      {1024, 2048, CKF_HW | CKF_SIGN | CKF_VERIFY},
-      {1024, 2048, CKF_HW | CKF_SIGN | CKF_VERIFY},
-      {1024, 2048, CKF_HW | CKF_SIGN | CKF_VERIFY},
-      {256, 384, CKF_HW | CKF_GENERATE_KEY_PAIR | CKF_EC_F_P | CKF_EC_NAMEDCURVE | CKF_EC_UNCOMPRESS},
-      {256, 384, CKF_HW | CKF_SIGN | CKF_VERIFY | CKF_EC_F_P | CKF_EC_NAMEDCURVE | CKF_EC_UNCOMPRESS},
-      {256, 384, CKF_HW | CKF_SIGN | CKF_VERIFY | CKF_EC_F_P | CKF_EC_NAMEDCURVE | CKF_EC_UNCOMPRESS},
-      {256, 384, CKF_HW | CKF_SIGN | CKF_VERIFY | CKF_EC_F_P | CKF_EC_NAMEDCURVE | CKF_EC_UNCOMPRESS},
-      {256, 384, CKF_HW | CKF_SIGN | CKF_VERIFY | CKF_EC_F_P | CKF_EC_NAMEDCURVE | CKF_EC_UNCOMPRESS},
-      {256, 384, CKF_HW | CKF_SIGN | CKF_VERIFY | CKF_EC_F_P | CKF_EC_NAMEDCURVE | CKF_EC_UNCOMPRESS},
-      {256, 384, CKF_HW | CKF_SIGN | CKF_VERIFY | CKF_EC_F_P | CKF_EC_NAMEDCURVE | CKF_EC_UNCOMPRESS},
-      {256, 384, CKF_HW | CKF_DERIVE | CKF_EC_F_P | CKF_EC_NAMEDCURVE | CKF_EC_UNCOMPRESS},
-      {0, 0, CKF_DIGEST},
-      {0, 0, CKF_DIGEST},
-      {0, 0, CKF_DIGEST},
-      {0, 0, CKF_DIGEST},
-      {255, 255, CKF_HW | CKF_GENERATE_KEY_PAIR | CKF_EC_F_P | CKF_EC_NAMEDCURVE | CKF_EC_UNCOMPRESS},
-      {255, 255, CKF_HW | CKF_GENERATE_KEY_PAIR | CKF_EC_F_P | CKF_EC_NAMEDCURVE | CKF_EC_UNCOMPRESS},
-      {255, 255, CKF_HW | CKF_SIGN | CKF_VERIFY | CKF_EC_F_P | CKF_EC_NAMEDCURVE | CKF_EC_UNCOMPRESS}
+    {255, 255, CKF_HW | CKF_SIGN | CKF_VERIFY | CKF_EC_F_P | CKF_EC_NAMEDCURVE | CKF_EC_UNCOMPRESS},
+    // Post-Quantum Cryptography. Sizes are public key lengths in bytes:
+    // 1312..2592 for ML-DSA-44..87 and 800..1568 for ML-KEM-512..1024
+    {1312, 2592, CKF_HW | CKF_GENERATE_KEY_PAIR},
+    {1312, 2592, CKF_HW | CKF_SIGN | CKF_VERIFY},
+    {1312, 2592, CKF_HW | CKF_SIGN | CKF_VERIFY},
+    {1312, 2592, CKF_HW | CKF_SIGN | CKF_VERIFY},
+    {800, 1568, CKF_HW | CKF_GENERATE_KEY_PAIR},
+    // CKM_ML_KEM decapsulates, it does not wrap or decrypt; see the comment on the
+    // matching entry in token.c for why CKF_ENCAPSULATE is absent too
+    {800, 1568, CKF_HW | CKF_DECAPSULATE}
   };
 
   init_connection();
@@ -280,11 +270,7 @@ static void test_mechanism_list_and_info() {
 
   for (i = 0; i < n_mechs; i++) {
     asrt(funcs->C_GetMechanismInfo(0, mechs[i], &info), CKR_OK, "GET MECH INFO");
-    if(ed25519_supported) {
-      asrt(memcmp(token_mechanism_infos_3 + i, &info, sizeof(CK_MECHANISM_INFO)), 0, "CHECK MECH INFO");
-    } else {
-      asrt(memcmp(token_mechanism_infos + i, &info, sizeof(CK_MECHANISM_INFO)), 0, "CHECK MECH INFO");
-    }
+    asrt(memcmp(token_mechanism_infos + i, &info, sizeof(CK_MECHANISM_INFO)), 0, "CHECK MECH INFO");
   }
   free(mechs);
   asrt(funcs->C_Finalize(NULL), CKR_OK, "FINALIZE");
