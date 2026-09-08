@@ -899,7 +899,7 @@ void generate_rsa_keys(CK_FUNCTION_LIST_3_0_PTR funcs, CK_SESSION_HANDLE session
     asrt(obj_pubkey[i], 111+i, "PUBLIC KEY HANDLE");
     asrt(obj_pvtkey[i], 86+i, "PRIVATE KEY HANDLE");
 
-    test_privkey_policy(funcs, session, obj_pvtkey[i], YKPIV_PINPOLICY_DEFAULT, YKPIV_TOUCHPOLICY_DEFAULT, CK_FALSE, 4, 30);
+    test_privkey_policy(funcs, session, obj_pvtkey[i], YKPIV_TOUCHPOLICY_DEFAULT, YKPIV_PINPOLICY_DEFAULT, CK_FALSE, 4, 30);
   }
   asrt(funcs->C_Logout(session), CKR_OK, "Logout SO");
 }
