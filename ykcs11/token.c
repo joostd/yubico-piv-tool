@@ -470,10 +470,13 @@ CK_RV token_generate_key(ykpiv_state *state, gen_info_t *gen, CK_BYTE key, CK_BY
     case YKPIV_ALGO_MLKEM512:
     case YKPIV_ALGO_MLKEM768:
     case YKPIV_ALGO_MLKEM1024:
-      // Note: Version check would be is_version_compatible(state, 6, 0, 0)
-      // but YubiKey 6 reports PIV version 0.0.1, so we can't use that check
-      // For now, let the hardware fail if it doesn't support PQC
-      DBG("Generating PQC key with algorithm 0x%02x", gen->algorithm);
+      // is_version_compatible answers true for the 0.0.1 that beta devices
+      // report, so this gate opens on prototype hardware while still rejecting
+      // a 5.x YubiKey with a real error instead of an opaque card failure
+      if (!is_version_compatible(state, 6, 0, 0)) {
+        DBG("ML-DSA and ML-KEM key types are only available with YubiKeys with version number 6.0.0 or later");
+        return CKR_FUNCTION_NOT_SUPPORTED;
+      }
       break;
 
     default:

@@ -48,7 +48,9 @@ static const CK_MECHANISM_TYPE generation_mechanisms[] = {
   //CKM_ECDSA_KEY_PAIR_GEN, Deperecated
   CKM_EC_KEY_PAIR_GEN,
   CKM_EC_EDWARDS_KEY_PAIR_GEN,
-  CKM_EC_MONTGOMERY_KEY_PAIR_GEN
+  CKM_EC_MONTGOMERY_KEY_PAIR_GEN,
+  CKM_ML_DSA_KEY_PAIR_GEN,
+  CKM_ML_KEM_KEY_PAIR_GEN
 };
 
 static const ykcs11_md_t* EVP_MD_by_mechanism(CK_MECHANISM_TYPE m) {
