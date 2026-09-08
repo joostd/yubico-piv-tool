@@ -186,6 +186,21 @@ CK_RV get_token_version(ykpiv_state *state, CK_VERSION_PTR version) {
     return yrc_to_rv(rc);
   }
 
+  // Beta devices report 0.0.1 no matter which generation they are. libykpiv
+  // reads that as "satisfies every version gate" (see is_version_compatible in
+  // ykpiv.c), but that rule cannot travel across the PKCS#11 boundary: an
+  // application sees only the number, and 0.1 would make it take the oldest
+  // code path on the newest hardware. Report the maximum instead. It is the
+  // same claim libykpiv already makes internally, it stays correct for beta
+  // devices of any generation, and it is obviously a sentinel rather than a
+  // version someone might mistake for real. Note that 0.0 is not available for
+  // this: the failure path above already uses it to mean "could not be read"
+  if (strcmp(buf, "0.0.1") == 0) {
+    version->major = 0xff;
+    version->minor = 0xff;
+    return CKR_OK;
+  }
+
   version->major = (buf[0] - '0');
   version->minor = (buf[2] - '0') * 10 + (buf[4] - '0');
 
