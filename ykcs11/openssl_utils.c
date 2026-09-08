@@ -36,6 +36,7 @@
 #include "debug.h"
 #include "mechanisms.h"
 #include <string.h>
+#include <openssl/err.h>
 
 CK_RV do_rand_seed(CK_BYTE_PTR data, CK_ULONG len) {
   RAND_seed(data, len);
@@ -126,9 +127,21 @@ CK_RV do_store_cert(CK_BYTE_PTR data, CK_ULONG len, ykcs11_x509_t **cert) {
   }
 
   const unsigned char *p = certdata; // Mandatory temp variable required by OpenSSL
+  // Decoding the SubjectPublicKeyInfo makes OpenSSL try each der2key decoder in
+  // turn, and the RSA one reports "expecting an rsa key" on its way to the
+  // decoder that actually fits a PQC or EC key. Current OpenSSL happens to mark
+  // and pop around that itself, so the entries do not escape today, but ykcs11
+  // shares libcrypto's error queue with the application and should not depend
+  // on someone else tidying up after a call it made. Drop the whole exchange
+  // once the parse works out; keep it when it does not, since then the entries
+  // are the explanation of a real failure
+  ERR_set_mark();
   *cert = d2i_X509(NULL, &p, certdata_len);
-  if (*cert == NULL)
+  if (*cert == NULL) {
+    ERR_clear_last_mark();
     return CKR_FUNCTION_FAILED;
+  }
+  ERR_pop_to_mark();
 
   return CKR_OK;
 
@@ -584,9 +597,19 @@ CK_RV do_get_modulus(ykcs11_pkey_t *key, CK_BYTE_PTR data, CK_ULONG len) {
   const RSA *rsa = NULL;
   const BIGNUM *n = NULL;
 
+  // EVP_PKEY_get0_RSA pushes "expecting an rsa key" onto the OpenSSL error
+  // queue when the key is not RSA. Being asked for the modulus of a non-RSA key
+  // is routine, PKCS#11 callers probe attributes they are not sure about, and
+  // CKR_ATTRIBUTE_TYPE_INVALID below is the whole answer. ykcs11 shares
+  // libcrypto with the application, so leaving the entry behind puts a stray
+  // error in a queue the application also reads. Roll the queue back instead
+  ERR_set_mark();
   rsa = key ? EVP_PKEY_get0_RSA(key) : 0;
-  if (rsa == NULL)
+  if (rsa == NULL) {
+    ERR_pop_to_mark();
     return CKR_ATTRIBUTE_TYPE_INVALID;
+  }
+  ERR_clear_last_mark();
 
   RSA_get0_key(rsa, &n, NULL, NULL);
 
@@ -608,9 +631,15 @@ CK_BBOOL do_check_public_exponent(CK_BYTE_PTR data, CK_ULONG len) {
 
 CK_RV do_get_public_exponent(ykcs11_pkey_t *key, CK_BYTE_PTR data, CK_ULONG_PTR len) {
 
+  // Same as in do_get_modulus: a non-RSA key here is a normal answer, so keep
+  // EVP_PKEY_get0_RSA's complaint out of the shared error queue
+  ERR_set_mark();
   const RSA *rsa = key ? EVP_PKEY_get0_RSA(key) : 0;
-  if (rsa == NULL)
+  if (rsa == NULL) {
+    ERR_pop_to_mark();
     return CKR_ATTRIBUTE_TYPE_INVALID;
+  }
+  ERR_clear_last_mark();
 
   const BIGNUM *bn_e = NULL;
   RSA_get0_key(rsa, NULL, &bn_e, NULL);

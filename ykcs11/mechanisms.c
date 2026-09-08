@@ -36,6 +36,7 @@
 #include "openssl_utils.h"
 #include "utils.h"
 #include "debug.h"
+#include <openssl/err.h>
 
 #if (OPENSSL_VERSION_NUMBER >= 0x30200000L)
 #include <openssl/params.h>
@@ -131,7 +132,12 @@ CK_RV sign_mechanism_init(ykcs11_session_t *session, ykcs11_pkey_t *key, CK_MECH
   }
   
   session->op_info.out_len = do_get_signature_size(key);
+  // NULL is the expected answer for every non-RSA mechanism below, so discard
+  // the "expecting an rsa key" that EVP_PKEY_get0_RSA leaves behind on its way
+  // there rather than handing it to the application through the shared queue
+  ERR_set_mark();
   session->op_info.op.sign.rsa = (RSA*)EVP_PKEY_get0_RSA(key);
+  ERR_pop_to_mark();
   session->op_info.op.sign.algorithm = do_get_key_algorithm(key);
 
   switch (session->op_info.mechanism) {
