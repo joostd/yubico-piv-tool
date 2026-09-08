@@ -1282,12 +1282,33 @@ typedef CK_CALLBACK_FUNCTION(CK_RV, CK_NOTIFY)(
  */
 typedef struct CK_FUNCTION_LIST CK_FUNCTION_LIST;
 typedef struct CK_FUNCTION_LIST_3_0 CK_FUNCTION_LIST_3_0;
+typedef struct CK_FUNCTION_LIST_3_2 CK_FUNCTION_LIST_3_2;
 
 typedef CK_FUNCTION_LIST CK_PTR CK_FUNCTION_LIST_PTR;
 typedef CK_FUNCTION_LIST_3_0 CK_PTR CK_FUNCTION_LIST_3_0_PTR;
+typedef CK_FUNCTION_LIST_3_2 CK_PTR CK_FUNCTION_LIST_3_2_PTR;
 
 typedef CK_FUNCTION_LIST_PTR CK_PTR CK_FUNCTION_LIST_PTR_PTR;
 typedef CK_FUNCTION_LIST_3_0_PTR CK_PTR CK_FUNCTION_LIST_3_0_PTR_PTR;
+typedef CK_FUNCTION_LIST_3_2_PTR CK_PTR CK_FUNCTION_LIST_3_2_PTR_PTR;
+
+/* Types needed to declare the PKCS#11 v3.2 entry points. Only the ones
+ * referenced by CK_FUNCTION_LIST_3_2 are defined here; the rest of the v3.2
+ * type universe is not implemented.
+ */
+typedef CK_ULONG CK_SESSION_VALIDATION_FLAGS_TYPE;
+
+typedef CK_FLAGS CK_PTR CK_FLAGS_PTR;
+
+typedef struct CK_ASYNC_DATA {
+  CK_ULONG         ulVersion;
+  CK_BYTE_PTR      pValue;
+  CK_ULONG         ulValue;
+  CK_OBJECT_HANDLE hObject;
+  CK_OBJECT_HANDLE hAdditionalObject;
+} CK_ASYNC_DATA;
+
+typedef CK_ASYNC_DATA CK_PTR CK_ASYNC_DATA_PTR;
 
 typedef struct CK_INTERFACE {
   CK_CHAR *pInterfaceName;

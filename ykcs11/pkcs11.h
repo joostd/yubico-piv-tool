@@ -149,6 +149,12 @@ extern "C" {
 
 #define __PASTE(x, y) x##y
 
+/* Emit prototypes and typedefs for the PKCS#11 v3.2 entry points as well.
+ * This is #undef'd again before the v3.0 and v2.x function lists are built so
+ * that their layouts stay exactly as the respective specs define them.
+ */
+#define CK_PKCS11_3_2 1
+
 /* ==============================================================
  * Define the "extern" form of all the entry points.
  * ==============================================================
@@ -194,6 +200,22 @@ extern "C" {
  */
 
 #define CK_PKCS11_FUNCTION_INFO(name) __PASTE(CK_, name) name;
+
+/* Create the 3.2 Function list. This must come first: it is the only list
+ * that includes pkcs11f.h with CK_PKCS11_3_2 still defined.
+ */
+struct CK_FUNCTION_LIST_3_2 {
+
+  CK_VERSION version; /* Cryptoki version */
+
+/* Pile all the function pointers into the CK_FUNCTION_LIST. */
+/* pkcs11f.h has all the information about the Cryptoki
+ * function prototypes.
+ */
+#include "pkcs11f.h"
+};
+
+#undef CK_PKCS11_3_2
 
 /* Create the 3.0 Function list */
 struct CK_FUNCTION_LIST_3_0 {
