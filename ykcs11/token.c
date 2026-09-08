@@ -87,7 +87,24 @@ static const token_mechanism token_mechanisms[] = {
   CKM_HASH_ML_DSA_SHA256, {MIN_MLDSA_KEY_SIZE, MAX_MLDSA_KEY_SIZE, CKF_HW | CKF_SIGN | CKF_VERIFY},
   CKM_HASH_ML_DSA_SHA512, {MIN_MLDSA_KEY_SIZE, MAX_MLDSA_KEY_SIZE, CKF_HW | CKF_SIGN | CKF_VERIFY},
   CKM_ML_KEM_KEY_PAIR_GEN, {MIN_MLKEM_KEY_SIZE, MAX_MLKEM_KEY_SIZE, CKF_HW | CKF_GENERATE_KEY_PAIR},
-  CKM_ML_KEM, {MIN_MLKEM_KEY_SIZE, MAX_MLKEM_KEY_SIZE, CKF_HW | CKF_WRAP | CKF_UNWRAP}
+  // Table 286 of the v3.2 spec ("ML-KEM Mechanisms vs. Functions") marks CKM_ML_KEM
+  // under Encapsulate & Decapsulate only, so CKF_DECAPSULATE is the sole operation
+  // flag reported here.
+  //
+  // Not CKF_WRAP/CKF_UNWRAP: C_WrapKey and C_UnwrapKey return
+  // CKR_FUNCTION_NOT_SUPPORTED for every mechanism, and each private key object
+  // reports CKA_UNWRAP = CK_FALSE (see pvtkey_objects in objects.c), so claiming
+  // those contradicts the very keys the mechanism applies to.
+  //
+  // Not CKF_ENCAPSULATE while C_EncapsulateKey remains a stub. Encapsulation needs
+  // only the public key and is done off-token.
+  //
+  // Not CKF_DECRYPT either, even though C_DecryptInit/C_Decrypt do accept
+  // CKM_ML_KEM and perform decapsulation. That path predates C_DecapsulateKey and
+  // still works, but the spec does not define ML-KEM as an encrypt/decrypt
+  // mechanism, so advertising it would misdescribe the mechanism to callers that
+  // expect spec semantics.
+  CKM_ML_KEM, {MIN_MLKEM_KEY_SIZE, MAX_MLKEM_KEY_SIZE, CKF_HW | CKF_DECAPSULATE}
 };
 
 // The commented out objects below are either not supported (PIV_DATA_OBJ_BITGT) or requires authentication.

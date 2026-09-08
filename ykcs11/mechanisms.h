@@ -55,6 +55,12 @@
 #define CKP_ML_KEM_512                 0x00000001UL
 #define CKP_ML_KEM_768                 0x00000002UL
 #define CKP_ML_KEM_1024                0x00000003UL
+
+// CK_MECHANISM_INFO flags added by PKCS#11 v3.2 for key encapsulation. Defined as
+// a pair even though only CKF_DECAPSULATE is currently reported by any mechanism;
+// C_EncapsulateKey is a stub, so CKF_ENCAPSULATE must stay unset until it is real.
+#define CKF_ENCAPSULATE                0x10000000UL
+#define CKF_DECAPSULATE                0x20000000UL
 #endif
 
 CK_RV sign_mechanism_init(ykcs11_session_t *session, ykcs11_pkey_t *key, CK_MECHANISM_PTR mech);
