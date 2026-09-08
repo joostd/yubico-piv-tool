@@ -1955,6 +1955,24 @@ static void print_algorithm_string(uint8_t algorithm, FILE *output) {
     case YKPIV_ALGO_X25519:
       fprintf(output, "X25519");
       break;
+    case YKPIV_ALGO_MLDSA44:
+      fprintf(output, "ML-DSA-44");
+      break;
+    case YKPIV_ALGO_MLDSA65:
+      fprintf(output, "ML-DSA-65");
+      break;
+    case YKPIV_ALGO_MLDSA87:
+      fprintf(output, "ML-DSA-87");
+      break;
+    case YKPIV_ALGO_MLKEM512:
+      fprintf(output, "ML-KEM-512");
+      break;
+    case YKPIV_ALGO_MLKEM768:
+      fprintf(output, "ML-KEM-768");
+      break;
+    case YKPIV_ALGO_MLKEM1024:
+      fprintf(output, "ML-KEM-1024");
+      break;
     default:
       fprintf(output, "Unknown");
   }
