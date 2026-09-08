@@ -61,6 +61,12 @@
 // C_EncapsulateKey is a stub, so CKF_ENCAPSULATE must stay unset until it is real.
 #define CKF_ENCAPSULATE                0x10000000UL
 #define CKF_DECAPSULATE                0x20000000UL
+
+// Key object attributes added by PKCS#11 v3.2. Distinct from the mechanism flags
+// above: these describe what an individual key may be used for. v3.2 section 5.18.9
+// makes CKA_DECAPSULATE = CK_TRUE a precondition of C_DecapsulateKey.
+#define CKA_ENCAPSULATE                0x00000633UL
+#define CKA_DECAPSULATE                0x00000634UL
 #endif
 
 CK_RV sign_mechanism_init(ykcs11_session_t *session, ykcs11_pkey_t *key, CK_MECHANISM_PTR mech);

@@ -709,6 +709,16 @@ static CK_RV get_proa(ykcs11_slot_t *s, piv_obj_id_t obj, CK_ATTRIBUTE_PTR templ
     data = b_tmp;
     break;
 
+  case CKA_DECAPSULATE:
+    // True for ML-KEM keys only. PKCS#11 v3.2 section 5.18.9 requires this to be
+    // CK_TRUE before C_DecapsulateKey may be used with the key, so it is derived
+    // from the key type rather than from a per-slot table
+    DBG("DECAPSULATE");
+    len = sizeof(CK_BBOOL);
+    b_tmp[0] = do_get_key_type(s->pkeys[piv_objects[obj].sub_id]) == CKK_ML_KEM ? CK_TRUE : CK_FALSE;
+    data = b_tmp;
+    break;
+
   case CKA_MODULUS:
     DBG("MODULUS");
     len = do_get_key_size(s->pkeys[piv_objects[obj].sub_id]);
@@ -1043,6 +1053,16 @@ static CK_RV get_puoa(ykcs11_slot_t *s, piv_obj_id_t obj, CK_ATTRIBUTE_PTR templ
     DBG("DERIVE");
     len = sizeof(CK_BBOOL);
     b_tmp[0] = pubkey_objects[piv_objects[obj].sub_id].derive;
+    data = b_tmp;
+    break;
+
+  case CKA_ENCAPSULATE:
+    // Always false: encapsulation needs only the public key, so it is done off
+    // token and C_EncapsulateKey is a stub. Flip this to track the key type, the
+    // way CKA_DECAPSULATE does in get_proa(), once that function is implemented
+    DBG("ENCAPSULATE");
+    len = sizeof(CK_BBOOL);
+    b_tmp[0] = CK_FALSE;
     data = b_tmp;
     break;
 
