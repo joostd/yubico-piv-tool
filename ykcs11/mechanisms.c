@@ -671,7 +671,7 @@ CK_RV validate_derive_key_attribute(CK_ATTRIBUTE_TYPE type, void *value) {
       break;
 
     default:
-      DBG("ECDH key derive template contains the ignored attribute: %lx", type);
+      DBG("Secret key template contains the ignored attribute: %lx", type);
       break;
   }
 

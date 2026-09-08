@@ -63,8 +63,13 @@ int verbose;
 
 static const CK_FUNCTION_LIST function_list;
 static const CK_FUNCTION_LIST_3_0 function_list_3;
+static const CK_FUNCTION_LIST_3_2 function_list_3_2;
 
+// Most specific interface first: C_GetInterface returns the first entry that
+// matches, and callers asking for no particular version get the newest one.
 static const CK_INTERFACE interfaces_list[] = {{(CK_CHAR_PTR) "PKCS 11",
+                                                   (CK_VOID_PTR)&function_list_3_2, 0},
+                                               {(CK_CHAR_PTR) "PKCS 11",
                                                    (CK_VOID_PTR)&function_list_3, 0},
                                                {(CK_CHAR_PTR) "PKCS 11",
                                                    (CK_VOID_PTR)&function_list, 0}};
@@ -3802,9 +3807,188 @@ CK_DEFINE_FUNCTION(CK_RV, C_DeriveKey)(
   sort_objects(session->slot);
 
   locking.pfnUnlockMutex(session->slot->mutex);
-  
+
   DOUT;
   return CKR_OK;
+}
+
+/* Key encapsulation functions (PKCS#11 v3.2) */
+
+CK_DEFINE_FUNCTION(CK_RV, C_EncapsulateKey)(
+  CK_SESSION_HANDLE hSession,
+  CK_MECHANISM_PTR pMechanism,
+  CK_OBJECT_HANDLE hPublicKey,
+  CK_ATTRIBUTE_PTR pTemplate,
+  CK_ULONG ulAttributeCount,
+  CK_BYTE_PTR pCiphertext,
+  CK_ULONG_PTR pulCiphertextLen,
+  CK_OBJECT_HANDLE_PTR phKey
+)
+{
+  DIN;
+  // TODO: implement ML-KEM encapsulation.
+  //
+  // Encapsulation only needs the public key, so it can be done entirely in
+  // software with EVP_PKEY_encapsulate() against session->slot->pkeys[id];
+  // the YubiKey has no encapsulate APDU. The work is:
+  //   1. Validate pMechanism->mechanism == CKM_ML_KEM and that hPublicKey is a
+  //      CKK_ML_KEM public key object.
+  //   2. Honour the pCiphertext == NULL length-query convention, returning the
+  //      ciphertext size from do_get_mlkem_ciphertext_size().
+  //   3. Run EVP_PKEY_encapsulate() to produce the ciphertext and the 32-byte
+  //      shared secret.
+  //   4. Store the shared secret as a session secret key object, the same way
+  //      C_DecapsulateKey does, and return its handle in phKey.
+  // Until then callers fall back to doing encapsulation with the exported
+  // public key, which is equivalent since no private key material is involved.
+  DBG("ML-KEM encapsulation is not implemented");
+  DOUT;
+  return CKR_FUNCTION_NOT_SUPPORTED;
+}
+
+CK_DEFINE_FUNCTION(CK_RV, C_DecapsulateKey)(
+  CK_SESSION_HANDLE hSession,
+  CK_MECHANISM_PTR pMechanism,
+  CK_OBJECT_HANDLE hPrivateKey,
+  CK_ATTRIBUTE_PTR pTemplate,
+  CK_ULONG ulAttributeCount,
+  CK_BYTE_PTR pCiphertext,
+  CK_ULONG ulCiphertextLen,
+  CK_OBJECT_HANDLE_PTR phKey
+)
+{
+  // This is a thin wrapper around the existing CKM_ML_KEM decrypt path: the
+  // YubiKey performs decapsulation with the same APDU either way, so the only
+  // difference from C_Decrypt is that the shared secret is handed back as a
+  // secret key object instead of being copied out to the caller. That is what
+  // the OpenSSL pkcs11-provider expects, and it keeps the secret off the
+  // application's stack.
+  //
+  // TODO: a full v3.2 implementation is more than this wrapper. Section 5.18.9 of
+  // the spec is the reference for all of the following:
+  //   - Honour pTemplate rather than validating it and then ignoring it. Right
+  //     now the returned object is always a non-sensitive, extractable
+  //     CKK_GENERIC_SECRET session object with fixed attributes (see get_skoa()
+  //     in objects.c); a conforming implementation would apply CKA_SENSITIVE,
+  //     CKA_EXTRACTABLE, CKA_LABEL, CKA_ID, the CKA_ENCRYPT/DECRYPT/WRAP/DERIVE
+  //     usage flags and CKA_KEY_TYPE from the template, and reject
+  //     CKA_TOKEN = CK_TRUE with CKR_TEMPLATE_INCONSISTENT rather than
+  //     CKR_ATTRIBUTE_VALUE_INVALID. The spec is explicit that a template which
+  //     cannot be supported exactly must fail without creating any key object.
+  //   - Set the attributes the spec mandates on the new key: CKA_ALWAYS_SENSITIVE
+  //     and CKA_NEVER_EXTRACTABLE to CK_FALSE, CKA_LOCAL to CK_FALSE,
+  //     CKA_EXTRACTABLE from the template defaulting to CK_TRUE, and a generated
+  //     CKA_UNIQUE_ID. get_skoa() currently serves none of these.
+  //   - Support non-extractable secrets. The point of decapsulating on-token is
+  //     that the shared secret need never be readable by the application; that
+  //     requires a secret key that can be used as a key for a subsequent
+  //     C_Derive/C_Encrypt without CKA_VALUE ever being served.
+  //   - Real session object lifetime management. PIV_SECRET_OBJ is a single
+  //     slot-wide slot, so a second decapsulation (or an ECDH C_DeriveKey)
+  //     silently overwrites the first, all sessions on a slot share it, and it
+  //     outlives the session that created it. Concurrent or pipelined KEM use
+  //     needs a real per-session object table with allocated handles.
+  //   - Support the other KEM mechanisms once the token exposes them.
+  DIN;
+  CK_RV rv;
+  CK_BYTE secret[32];
+  CK_ULONG secret_len = sizeof(secret);
+
+  if (!pid) {
+    DBG("libykpiv is not initialized or already finalized");
+    DOUT;
+    return CKR_CRYPTOKI_NOT_INITIALIZED;
+  }
+
+  ykcs11_session_t* session = get_session(hSession);
+
+  if (session == NULL || session->slot == NULL) {
+    DBG("Session is not open");
+    DOUT;
+    return CKR_SESSION_HANDLE_INVALID;
+  }
+
+  if (pMechanism == NULL || pCiphertext == NULL || phKey == NULL) {
+    DBG("Invalid parameters");
+    DOUT;
+    return CKR_ARGUMENTS_BAD;
+  }
+
+  if (pMechanism->mechanism != CKM_ML_KEM) {
+    DBG("Mechanism %lu is not a supported decapsulation mechanism", pMechanism->mechanism);
+    DOUT;
+    return CKR_MECHANISM_INVALID;
+  }
+
+  // v3.2 section 5.18.9 requires CKA_DECAPSULATE on the private key to be CK_TRUE.
+  // get_proa() derives that attribute from the key type, so check the key type here
+  // rather than round-tripping through C_GetAttributeValue. C_DecryptInit re-takes
+  // the mutex and re-validates the handle, so this only has to be good enough to
+  // reject a key that could never decapsulate
+  if (hPrivateKey < PIV_PVTK_OBJ_PIV_AUTH || hPrivateKey > PIV_PVTK_OBJ_ATTESTATION) {
+    DBG("Key handle %lu is not a private key", hPrivateKey);
+    DOUT;
+    return CKR_KEY_HANDLE_INVALID;
+  }
+
+  locking.pfnLockMutex(session->slot->mutex);
+  CK_KEY_TYPE key_type = do_get_key_type(session->slot->pkeys[get_sub_id(hPrivateKey)]);
+  locking.pfnUnlockMutex(session->slot->mutex);
+
+  if (key_type != CKK_ML_KEM) {
+    DBG("Key %lu has CKA_DECAPSULATE = CK_FALSE, it is not an ML-KEM key", hPrivateKey);
+    DOUT;
+    return CKR_KEY_FUNCTION_NOT_PERMITTED;
+  }
+
+  // The decapsulated secret is exposed as the same kind of object as an ECDH
+  // derived key, so the same template constraints apply
+  for (CK_ULONG i = 0; i < ulAttributeCount; i++) {
+    if (pTemplate[i].pValue == NULL) {
+      DBG("Attribute %lx in the template has no value", pTemplate[i].type);
+      DOUT;
+      return CKR_ATTRIBUTE_VALUE_INVALID;
+    }
+    rv = validate_derive_key_attribute(pTemplate[i].type, pTemplate[i].pValue);
+    if (rv != CKR_OK) {
+      DOUT;
+      return rv;
+    }
+  }
+
+  rv = C_DecryptInit(hSession, pMechanism, hPrivateKey);
+  if (rv != CKR_OK) {
+    DBG("Failed to initialize ML-KEM decapsulation");
+    DOUT;
+    return rv;
+  }
+
+  rv = C_Decrypt(hSession, pCiphertext, ulCiphertextLen, secret, &secret_len);
+  if (rv != CKR_OK) {
+    DBG("Failed to decapsulate %lu byte ciphertext", ulCiphertextLen);
+    DOUT;
+    return rv;
+  }
+
+  DBG("Decapsulated a %lu byte shared secret into object %u", secret_len, PIV_SECRET_OBJ);
+
+  locking.pfnLockMutex(session->slot->mutex);
+
+  rv = store_data(session->slot, 0, secret, secret_len);
+  if (rv == CKR_OK) {
+    *phKey = PIV_SECRET_OBJ;
+    add_object(session->slot, *phKey);
+    sort_objects(session->slot);
+  } else {
+    DBG("Failed to store the shared secret");
+  }
+
+  locking.pfnUnlockMutex(session->slot->mutex);
+
+  memset(secret, 0, sizeof(secret));
+
+  DOUT;
+  return rv;
 }
 
 /* Random number generation functions */
@@ -4420,4 +4604,116 @@ static const CK_FUNCTION_LIST_3_0 function_list_3 = {
   C_VerifyMessageBegin,
   C_VerifyMessageNext,
   C_MessageVerifyFinal,
+};
+
+// PKCS#11 v3.2 interface. Identical to the v3.0 list up to C_MessageVerifyFinal,
+// followed by the v3.2 additions. Only the KEM entry points are implemented; the
+// rest are NULL, which callers must treat as "function not supported".
+static const CK_FUNCTION_LIST_3_2 function_list_3_2 = {
+  {CRYPTOKI_VERSION_MAJOR, 2},
+  C_Initialize,
+  C_Finalize,
+  C_GetInfo_3_0,
+  C_GetFunctionList,
+  C_GetSlotList,
+  C_GetSlotInfo,
+  C_GetTokenInfo,
+  C_GetMechanismList,
+  C_GetMechanismInfo,
+  C_InitToken,
+  C_InitPIN,
+  C_SetPIN,
+  C_OpenSession,
+  C_CloseSession,
+  C_CloseAllSessions,
+  C_GetSessionInfo,
+  C_GetOperationState,
+  C_SetOperationState,
+  C_Login,
+  C_Logout,
+  C_CreateObject,
+  C_CopyObject,
+  C_DestroyObject,
+  C_GetObjectSize,
+  C_GetAttributeValue,
+  C_SetAttributeValue,
+  C_FindObjectsInit,
+  C_FindObjects,
+  C_FindObjectsFinal,
+  C_EncryptInit,
+  C_Encrypt,
+  C_EncryptUpdate,
+  C_EncryptFinal,
+  C_DecryptInit,
+  C_Decrypt,
+  C_DecryptUpdate,
+  C_DecryptFinal,
+  C_DigestInit,
+  C_Digest,
+  C_DigestUpdate,
+  C_DigestKey,
+  C_DigestFinal,
+  C_SignInit,
+  C_Sign,
+  C_SignUpdate,
+  C_SignFinal,
+  C_SignRecoverInit,
+  C_SignRecover,
+  C_VerifyInit,
+  C_Verify,
+  C_VerifyUpdate,
+  C_VerifyFinal,
+  C_VerifyRecoverInit,
+  C_VerifyRecover,
+  C_DigestEncryptUpdate,
+  C_DecryptDigestUpdate,
+  C_SignEncryptUpdate,
+  C_DecryptVerifyUpdate,
+  C_GenerateKey,
+  C_GenerateKeyPair,
+  C_WrapKey,
+  C_UnwrapKey,
+  C_DeriveKey,
+  C_SeedRandom,
+  C_GenerateRandom,
+  C_GetFunctionStatus,
+  C_CancelFunction,
+  C_WaitForSlotEvent,
+  C_GetInterfaceList,
+  C_GetInterface,
+  C_LoginUser,
+  C_SessionCancel,
+  C_MessageEncryptInit,
+  C_EncryptMessage,
+  C_EncryptMessageBegin,
+  C_EncryptMessageNext,
+  C_MessageEncryptFinal,
+  C_MessageDecryptInit,
+  C_DecryptMessage,
+  C_DecryptMessageBegin,
+  C_DecryptMessageNext,
+  C_MessageDecryptFinal,
+  C_MessageSignInit,
+  C_SignMessage,
+  C_SignMessageBegin,
+  C_SignMessageNext,
+  C_MessageSignFinal,
+  C_MessageVerifyInit,
+  C_VerifyMessage,
+  C_VerifyMessageBegin,
+  C_VerifyMessageNext,
+  C_MessageVerifyFinal,
+  // PKCS#11 v3.2 additions
+  C_EncapsulateKey,
+  C_DecapsulateKey,
+  NULL, // C_VerifySignatureInit
+  NULL, // C_VerifySignature
+  NULL, // C_VerifySignatureUpdate
+  NULL, // C_VerifySignatureFinal
+  NULL, // C_GetSessionValidationFlags
+  NULL, // C_AsyncComplete
+  NULL, // C_AsyncGetID
+  NULL, // C_AsyncJoin
+  NULL, // C_WrapKeyAuthenticated
+  NULL, // C_UnwrapKeyAuthenticated
 };
