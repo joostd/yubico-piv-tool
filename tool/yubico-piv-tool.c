@@ -2587,7 +2587,7 @@ static bool list_readers(ykpiv_state *state) {
 
 static bool attest(ykpiv_state *state, enum enum_slot slot,
     enum enum_key_format key_format, const char *output_file_name) {
-  unsigned char data[2048] = {0};
+  unsigned char data[YKPIV_OBJ_MAX_SIZE] = {0};
   size_t len = sizeof(data);
   bool ret = false;
   X509 *x509 = NULL;

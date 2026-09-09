@@ -601,7 +601,7 @@ START_TEST(test_generate_key) {
   // Verify that imported key can be attested
   {
     ykpiv_devmodel model;
-    unsigned char attest[2048] = {0};
+    unsigned char attest[YKPIV_OBJ_MAX_SIZE] = {0};
     size_t attest_len = sizeof(attest);
     model = ykpiv_util_devicemodel(g_state);
     res = ykpiv_attest(g_state, YKPIV_KEY_AUTHENTICATION, attest, &attest_len);
