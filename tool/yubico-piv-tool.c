@@ -2370,7 +2370,15 @@ static bool test_signature(ykpiv_state *state, enum enum_slot slot,
         break;
 #if (OPENSSL_VERSION_NUMBER >= 0x10100000L)
       case YKPIV_ALGO_ED25519:
+#if (OPENSSL_VERSION_NUMBER >= 0x30600000L)
+      /* ML-DSA is a pure signature scheme like Ed25519, so it verifies through
+       * the same one-shot interface with no digest named */
+      case YKPIV_ALGO_MLDSA44:
+      case YKPIV_ALGO_MLDSA65:
+      case YKPIV_ALGO_MLDSA87:
+#endif
         {
+          const char *scheme = algorithm == YKPIV_ALGO_ED25519 ? "EDDSA" : "ML-DSA";
           EVP_MD_CTX *ctx;
           int rc;
           ctx = EVP_MD_CTX_new();
@@ -2379,14 +2387,14 @@ static bool test_signature(ykpiv_state *state, enum enum_slot slot,
             EVP_MD_CTX_free(ctx); // It's OK if ctx is NULL
             goto test_out;
           }
-          rc = EVP_DigestVerify(ctx, signature, (int)sig_len, data, (int)data_len);
+          rc = EVP_DigestVerify(ctx, signature, sig_len, data, data_len);
           EVP_MD_CTX_free(ctx);
           if(rc == 1) {
-            fprintf(stderr, "Successful EDDSA verification.\n");
+            fprintf(stderr, "Successful %s verification.\n", scheme);
             ret = true;
             goto test_out;
           } else {
-            fprintf(stderr, "Failed EDDSA verification.\n");
+            fprintf(stderr, "Failed %s verification.\n", scheme);
             goto test_out;
           }
         }
