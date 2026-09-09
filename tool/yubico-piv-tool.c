@@ -260,6 +260,40 @@ static EVP_PKEY* wrap_public_key(ykpiv_state *state, int algorithm, EVP_PKEY *pu
   }
   return pkey;
 }
+
+/* Neither Ed25519 nor ML-DSA has a METHOD hook we can redirect to the card the
+ * way RSA and EC do, so X509_sign() has to be given a real key it can sign
+ * with. Hand it a throwaway of the same type: that gets the AlgorithmIdentifier
+ * and the DER framing right, and the caller then re-encodes the TBS portion,
+ * signs that on the YubiKey, and drops the real signature in place of this
+ * one. */
+static EVP_PKEY *generate_dummy_key(unsigned char algorithm) {
+  EVP_PKEY *pkey = NULL;
+  EVP_PKEY_CTX *ctx = NULL;
+
+  if(algorithm == YKPIV_ALGO_ED25519) {
+    ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_ED25519, NULL);
+  }
+#if (OPENSSL_VERSION_NUMBER >= 0x30600000L)
+  else if(YKPIV_IS_MLDSA(algorithm)) {
+    const char *name = algorithm == YKPIV_ALGO_MLDSA44 ? "ML-DSA-44" :
+                       algorithm == YKPIV_ALGO_MLDSA65 ? "ML-DSA-65" : "ML-DSA-87";
+    ctx = EVP_PKEY_CTX_new_from_name(NULL, name, NULL);
+  }
+#endif
+  if(!ctx) {
+    fprintf(stderr, "Failed to allocate a context for algorithm %x.\n", algorithm);
+    return NULL;
+  }
+  if(EVP_PKEY_keygen_init(ctx) <= 0 || EVP_PKEY_keygen(ctx, &pkey) <= 0) {
+    fprintf(stderr, "Failed to generate a temporary signing key.\n");
+    ERR_print_errors_fp(stderr);
+    EVP_PKEY_free(pkey);
+    pkey = NULL;
+  }
+  EVP_PKEY_CTX_free(ctx);
+  return pkey;
+}
 #endif
 
 static bool get_public_key(ykpiv_state *state, enum enum_slot slot, const char *output_file_name,
@@ -1124,7 +1158,9 @@ static bool request_certificate(ykpiv_state *state, enum enum_key_format key_for
   if(algorithm == 0) {
     goto request_out;
   }
-  if (!YKPIV_IS_25519(algorithm)) {
+  /* Ed25519 and ML-DSA hash the message themselves, so there is nothing to
+   * pre-hash and no digest to name in the signature algorithm */
+  if (!YKPIV_IS_25519(algorithm) && !YKPIV_IS_MLDSA(algorithm)) {
     md = get_hash(hash, &oid, &oid_len);
     if (md == NULL) {
       goto request_out;
@@ -1196,35 +1232,41 @@ static bool request_certificate(ykpiv_state *state, enum enum_key_format key_for
 #else
 
 #if (OPENSSL_VERSION_NUMBER >= 0x10100000L)
-  if (algorithm == YKPIV_ALGO_ED25519) {
+  if (algorithm == YKPIV_ALGO_ED25519 || YKPIV_IS_MLDSA(algorithm)) {
 
-    // Generate a dummy ED25519 to sign with OpenSSL
-    EVP_PKEY *ed_key = NULL;
-    EVP_PKEY_CTX *ed_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_ED25519, NULL);
-    EVP_PKEY_keygen_init(ed_ctx);
-    EVP_PKEY_keygen(ed_ctx, &ed_key);
-    EVP_PKEY_CTX_free(ed_ctx);
-
-    // Sign the request object using the dummy key
-    if (X509_REQ_sign(req, ed_key, md) == 0) {
-      fprintf(stderr, "Failed signing certificate.\n");
-      ERR_print_errors_fp(stderr);
-      EVP_PKEY_free(ed_key);
+    // Generate a dummy key of the same type to sign with OpenSSL
+    EVP_PKEY *tmp_key = generate_dummy_key(algorithm);
+    if (tmp_key == NULL) {
       goto request_out;
     }
-    EVP_PKEY_free(ed_key);
+
+    // Sign the request object using the dummy key
+    if (X509_REQ_sign(req, tmp_key, md) == 0) {
+      fprintf(stderr, "Failed signing certificate.\n");
+      ERR_print_errors_fp(stderr);
+      EVP_PKEY_free(tmp_key);
+      goto request_out;
+    }
+    EVP_PKEY_free(tmp_key);
 
     // Extract the request data without the signature
     unsigned char *tbs_data = NULL;
     int tbs_len = i2d_re_X509_REQ_tbs(req, &tbs_data);
+    if (tbs_len <= 0) {
+      fprintf(stderr, "Failed encoding tbs request portion.\n");
+      goto request_out;
+    }
 
-    // Sign the request data using the YubiKey
-    unsigned char yk_sig[64] = {0};
+    // Sign the request data using the YubiKey. ML-DSA-87 signatures are 4627
+    // bytes, so this needs considerably more room than Ed25519 does
+    unsigned char yk_sig[YKPIV_OBJ_MAX_SIZE] = {0};
     size_t yk_siglen = sizeof(yk_sig);
     if (!sign_data(state, tbs_data, tbs_len, yk_sig, &yk_siglen, algorithm, key)) {
       fprintf(stderr, "Failed signing tbs request portion.\n");
+      OPENSSL_free(tbs_data);
       goto request_out;
     }
+    OPENSSL_free(tbs_data);
 
     // Replace the dummy signature with the signature from the yubikey
     ASN1_BIT_STRING *psig;
@@ -1388,7 +1430,9 @@ static bool selfsign_certificate(ykpiv_state *state, enum enum_key_format key_fo
   size_t oid_len = 0;
   const unsigned char *oid = 0;
   const EVP_MD *md = NULL;
-  if (algorithm != YKPIV_ALGO_ED25519) {
+  /* Ed25519 and ML-DSA hash the message themselves, so there is nothing to
+   * pre-hash and no digest to name in the signature algorithm */
+  if (algorithm != YKPIV_ALGO_ED25519 && !YKPIV_IS_MLDSA(algorithm)) {
     md = get_hash(hash, &oid, &oid_len);
     if (md == NULL) {
       goto selfsign_out;
@@ -1454,6 +1498,7 @@ static bool selfsign_certificate(ykpiv_state *state, enum enum_key_format key_fo
   }
   int nid = get_hashnid(hash, algorithm);
   if(nid == 0) {
+    fprintf(stderr, "Unsupported algorithm %x or hash %x\n", algorithm, hash);
     goto selfsign_out;
   }
 
@@ -1556,35 +1601,41 @@ static bool selfsign_certificate(ykpiv_state *state, enum enum_key_format key_fo
 #else
 
 #if (OPENSSL_VERSION_NUMBER >= 0x10100000L)
-  if (algorithm == YKPIV_ALGO_ED25519) {
+  if (algorithm == YKPIV_ALGO_ED25519 || YKPIV_IS_MLDSA(algorithm)) {
 
-    // Generate a dummy ED25519 to sign with OpenSSL
-    EVP_PKEY *ed_key = NULL;
-    EVP_PKEY_CTX *ed_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_ED25519, NULL);
-    EVP_PKEY_keygen_init(ed_ctx);
-    EVP_PKEY_keygen(ed_ctx, &ed_key);
-    EVP_PKEY_CTX_free(ed_ctx);
-
-    // Sign the X509 object using the dummy key
-    if (X509_sign(x509, ed_key, md) == 0) {
-      fprintf(stderr, "Failed signing certificate.\n");
-      ERR_print_errors_fp(stderr);
-      EVP_PKEY_free(ed_key);
+    // Generate a dummy key of the same type to sign with OpenSSL
+    EVP_PKEY *tmp_key = generate_dummy_key(algorithm);
+    if (tmp_key == NULL) {
       goto selfsign_out;
     }
-    EVP_PKEY_free(ed_key);
+
+    // Sign the X509 object using the dummy key
+    if (X509_sign(x509, tmp_key, md) == 0) {
+      fprintf(stderr, "Failed signing certificate.\n");
+      ERR_print_errors_fp(stderr);
+      EVP_PKEY_free(tmp_key);
+      goto selfsign_out;
+    }
+    EVP_PKEY_free(tmp_key);
 
     // Extract the certificate data without the signature
     unsigned char *tbs_data = NULL;
     int tbs_len = i2d_re_X509_tbs(x509, &tbs_data);
+    if (tbs_len <= 0) {
+      fprintf(stderr, "Failed encoding tbs certificate portion.\n");
+      goto selfsign_out;
+    }
 
-    // Sign the certificate data using the YubiKey
-    unsigned char yk_sig[512] = {0};
+    // Sign the certificate data using the YubiKey. ML-DSA-87 signatures are
+    // 4627 bytes, so this needs considerably more room than Ed25519 does
+    unsigned char yk_sig[YKPIV_OBJ_MAX_SIZE] = {0};
     size_t yk_siglen = sizeof(yk_sig);
     if (!sign_data(state, tbs_data, tbs_len, yk_sig, &yk_siglen, algorithm, key)) {
       fprintf(stderr, "Failed signing tbs certificate portion.\n");
+      OPENSSL_free(tbs_data);
       goto selfsign_out;
     }
+    OPENSSL_free(tbs_data);
 
     // Replace the dummy signature with the signature from the yubikey
     ASN1_BIT_STRING *psig;

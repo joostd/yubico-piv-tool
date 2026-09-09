@@ -91,7 +91,19 @@ static ykpiv_rc _get_metadata_item(uint8_t *data, size_t cb_data, uint8_t tag, u
 static ykpiv_rc _set_metadata_item(uint8_t *data, size_t *pcb_data, size_t cb_data_max, uint8_t tag, uint8_t *p_item, size_t cb_item);
 
 static size_t _obj_size_max(ykpiv_state *state) {
-  return (state && state->model == DEVTYPE_NEOr3) ? CB_OBJ_MAX_NEO : CB_OBJ_MAX;
+  if (!state) {
+    return CB_OBJ_MAX_YK4;
+  }
+  if (state->model == DEVTYPE_NEOr3) {
+    return CB_OBJ_MAX_NEO;
+  }
+  // firmware 6 is the first with a message buffer big enough to hold a
+  // post-quantum certificate. Beta devices report 0.0.1, which
+  // is_version_compatible reads as new enough for anything
+  if (is_version_compatible(state, 6, 0, 0)) {
+    return CB_OBJ_MAX_YK6;
+  }
+  return CB_OBJ_MAX_YK4;
 }
 
 static unsigned long get_length_size(unsigned long length) {
@@ -386,7 +398,10 @@ ykpiv_rc ykpiv_util_free(ykpiv_state *state, void *data) {
 
 ykpiv_rc ykpiv_util_read_cert(ykpiv_state *state, uint8_t slot, uint8_t **data, size_t *data_len) {
   ykpiv_rc res = YKPIV_OK;
-  uint8_t buf[CB_BUF_MAX] = {0};
+  // sized for the largest device rather than for this one, since the cost is
+  // stack we have and the alternative is failing to read a certificate the card
+  // was perfectly happy to hand over
+  uint8_t buf[CB_BUF_MAX_YK6] = {0};
   size_t cbBuf = sizeof(buf);
 
   if ((NULL == data )|| (NULL == data_len)) return YKPIV_ARGUMENT_ERROR;
@@ -1668,8 +1683,10 @@ static ykpiv_rc _read_certificate(ykpiv_state *state, uint8_t slot, uint8_t *buf
 }
 
 static ykpiv_rc _write_certificate(ykpiv_state *state, uint8_t slot, uint8_t *data, size_t data_len, uint8_t certinfo) {
-  uint8_t buf[CB_OBJ_MAX] = {0};
-  size_t buf_len = sizeof(buf);
+  uint8_t buf[CB_OBJ_MAX_YK6] = {0};
+  // the buffer is sized for the largest device, so bound the encoding by what
+  // this one will actually accept
+  size_t buf_len = _obj_size_max(state);
   int object_id = (int)ykpiv_util_slot_object(slot);
 
 

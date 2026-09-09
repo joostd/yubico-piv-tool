@@ -69,10 +69,15 @@ extern "C"
 // is CB_BUF_MAX - 9
 #define CB_OBJ_MAX_NEO      (CB_BUF_MAX_NEO - 9)
 #define CB_OBJ_MAX_YK4      (CB_BUF_MAX_YK4 - 9)
+#define CB_OBJ_MAX_YK6      (CB_BUF_MAX_YK6 - 9)
 #define CB_OBJ_MAX          CB_OBJ_MAX_YK4
 
 #define CB_BUF_MAX_NEO      2048
 #define CB_BUF_MAX_YK4      3072
+// firmware 6 grew the message buffer to make room for post-quantum
+// certificates, which do not come close to fitting in the YK4 one: an ML-DSA-87
+// attestation certificate alone runs to over 7 kB
+#define CB_BUF_MAX_YK6      8192
 #define CB_BUF_MAX          CB_BUF_MAX_YK4
 
 #define CB_ATR_MAX          33

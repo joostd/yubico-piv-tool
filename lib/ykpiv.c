@@ -2510,7 +2510,10 @@ ykpiv_rc _ykpiv_save_object(
     int object_id,
     unsigned char *indata,
     size_t len) {
-  unsigned char data[CB_BUF_MAX] = {0};
+  // sized for firmware 6, whose objects hold post-quantum certificates several
+  // times larger than anything the YK4 buffer was meant for. _ykpiv_transfer_data
+  // chains the APDUs, and a device that cannot take an object this big says so
+  unsigned char data[CB_BUF_MAX_YK6] = {0};
   unsigned char *dataptr = data;
   unsigned char templ[] = {0, YKPIV_INS_PUT_DATA, 0x3f, 0xff};
   int sw = 0;
@@ -2524,6 +2527,7 @@ ykpiv_rc _ykpiv_save_object(
   *dataptr++ = 0x53;
   dataptr += _ykpiv_set_length(dataptr, len);
   if(dataptr + len > data + sizeof(data)) {
+    DBG("Object of %zu bytes does not fit in the %zu byte send buffer", len, sizeof(data));
     return YKPIV_SIZE_ERROR;
   }
   if(indata)

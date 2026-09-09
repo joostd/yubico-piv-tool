@@ -574,6 +574,16 @@ int get_hashnid(enum enum_hash hash, unsigned char algorithm) {
     case YKPIV_ALGO_X25519:
       return NID_X25519;
 #endif
+#if (OPENSSL_VERSION_NUMBER >= 0x30600000L)
+    /* ML-DSA hashes the message itself, so the signature algorithm identifier
+     * stands alone and the requested hash plays no part in it */
+    case YKPIV_ALGO_MLDSA44:
+      return NID_ML_DSA_44;
+    case YKPIV_ALGO_MLDSA65:
+      return NID_ML_DSA_65;
+    case YKPIV_ALGO_MLDSA87:
+      return NID_ML_DSA_87;
+#endif
     default:
       return 0;
   }
