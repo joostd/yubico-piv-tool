@@ -3825,25 +3825,134 @@ CK_DEFINE_FUNCTION(CK_RV, C_EncapsulateKey)(
   CK_OBJECT_HANDLE_PTR phKey
 )
 {
-  DIN;
-  // TODO: implement ML-KEM encapsulation.
+  // Encapsulation involves no private key material, so unlike its decapsulating
+  // counterpart this never touches the YubiKey: it runs EVP_PKEY_encapsulate()
+  // against the cached public key of the slot. There is no encapsulate APDU to
+  // call even if we wanted to, and no PIN to verify first.
   //
-  // Encapsulation only needs the public key, so it can be done entirely in
-  // software with EVP_PKEY_encapsulate() against session->slot->pkeys[id];
-  // the YubiKey has no encapsulate APDU. The work is:
-  //   1. Validate pMechanism->mechanism == CKM_ML_KEM and that hPublicKey is a
-  //      CKK_ML_KEM public key object.
-  //   2. Honour the pCiphertext == NULL length-query convention, returning the
-  //      ciphertext size from do_get_mlkem_ciphertext_size().
-  //   3. Run EVP_PKEY_encapsulate() to produce the ciphertext and the 32-byte
-  //      shared secret.
-  //   4. Store the shared secret as a session secret key object, the same way
-  //      C_DecapsulateKey does, and return its handle in phKey.
-  // Until then callers fall back to doing encapsulation with the exported
-  // public key, which is equivalent since no private key material is involved.
-  DBG("ML-KEM encapsulation is not implemented");
+  // TODO: the template and session object caveats listed on C_DecapsulateKey apply
+  // here word for word. The shared secret lands in the same single slot-wide
+  // PIV_SECRET_OBJ, with the same fixed attributes from get_skoa(), so a second
+  // encapsulation (or a decapsulation, or an ECDH C_DeriveKey) overwrites the
+  // first, and pTemplate is validated and then ignored.
+  DIN;
+  CK_RV rv;
+  CK_BYTE secret[32] = {0};
+  CK_ULONG secret_len = sizeof(secret);
+  CK_ULONG ct_len;
+
+  if (!pid) {
+    DBG("libykpiv is not initialized or already finalized");
+    DOUT;
+    return CKR_CRYPTOKI_NOT_INITIALIZED;
+  }
+
+  ykcs11_session_t* session = get_session(hSession);
+
+  if (session == NULL || session->slot == NULL) {
+    DBG("Session is not open");
+    DOUT;
+    return CKR_SESSION_HANDLE_INVALID;
+  }
+
+  if (pMechanism == NULL || pulCiphertextLen == NULL) {
+    DBG("Invalid parameters");
+    DOUT;
+    return CKR_ARGUMENTS_BAD;
+  }
+
+  if (pMechanism->mechanism != CKM_ML_KEM) {
+    DBG("Mechanism %lu is not a supported encapsulation mechanism", pMechanism->mechanism);
+    DOUT;
+    return CKR_MECHANISM_INVALID;
+  }
+
+  if (hPublicKey < PIV_PUBK_OBJ_PIV_AUTH || hPublicKey > PIV_PUBK_OBJ_ATTESTATION) {
+    DBG("Key handle %lu is not a public key", hPublicKey);
+    DOUT;
+    return CKR_KEY_HANDLE_INVALID;
+  }
+
+  // The mutex is held for the whole operation rather than just long enough to read
+  // the key type, because the pkey pointer itself is what the encapsulation runs on
+  locking.pfnLockMutex(session->slot->mutex);
+
+  ykcs11_pkey_t *pkey = session->slot->pkeys[get_sub_id(hPublicKey)];
+
+  // v3.2 section 5.18.8 requires CKA_ENCAPSULATE on the public key to be CK_TRUE.
+  // get_puoa() derives that attribute from the key type, so check the key type here
+  // rather than round-tripping through C_GetAttributeValue
+  if (do_get_key_type(pkey) != CKK_ML_KEM) {
+    DBG("Key %lu has CKA_ENCAPSULATE = CK_FALSE, it is not an ML-KEM key", hPublicKey);
+    rv = CKR_KEY_FUNCTION_NOT_PERMITTED;
+    goto encap_out;
+  }
+
+  ct_len = do_get_mlkem_ciphertext_size(pkey);
+  if (ct_len == 0) {
+    DBG("Unable to determine the ML-KEM ciphertext size for key %lu", hPublicKey);
+    rv = CKR_FUNCTION_FAILED;
+    goto encap_out;
+  }
+
+  if (pCiphertext == NULL) {
+    // Length query. No key object is created, so phKey is not looked at
+    *pulCiphertextLen = ct_len;
+    rv = CKR_OK;
+    goto encap_out;
+  }
+
+  if (*pulCiphertextLen < ct_len) {
+    *pulCiphertextLen = ct_len;
+    rv = CKR_BUFFER_TOO_SMALL;
+    goto encap_out;
+  }
+
+  if (phKey == NULL) {
+    DBG("Invalid parameters");
+    rv = CKR_ARGUMENTS_BAD;
+    goto encap_out;
+  }
+
+  // The shared secret is exposed as the same kind of object as an ECDH derived
+  // key, so the same template constraints apply
+  for (CK_ULONG i = 0; i < ulAttributeCount; i++) {
+    if (pTemplate[i].pValue == NULL) {
+      DBG("Attribute %lx in the template has no value", pTemplate[i].type);
+      rv = CKR_ATTRIBUTE_VALUE_INVALID;
+      goto encap_out;
+    }
+    rv = validate_derive_key_attribute(pTemplate[i].type, pTemplate[i].pValue);
+    if (rv != CKR_OK) {
+      goto encap_out;
+    }
+  }
+
+  rv = do_encapsulate(pkey, pCiphertext, &ct_len, secret, &secret_len);
+  if (rv != CKR_OK) {
+    DBG("Failed to encapsulate to key %lu", hPublicKey);
+    goto encap_out;
+  }
+
+  DBG("Encapsulated a %lu byte shared secret into object %u, ciphertext is %lu bytes",
+      secret_len, PIV_SECRET_OBJ, ct_len);
+
+  rv = store_data(session->slot, 0, secret, secret_len);
+  if (rv == CKR_OK) {
+    *pulCiphertextLen = ct_len;
+    *phKey = PIV_SECRET_OBJ;
+    add_object(session->slot, *phKey);
+    sort_objects(session->slot);
+  } else {
+    DBG("Failed to store the shared secret");
+  }
+
+encap_out:
+  // Also on the failure paths: do_encapsulate can leave a partial secret behind
+  OPENSSL_cleanse(secret, sizeof(secret));
+  locking.pfnUnlockMutex(session->slot->mutex);
   DOUT;
-  return CKR_FUNCTION_NOT_SUPPORTED;
+  return rv;
 }
 
 CK_DEFINE_FUNCTION(CK_RV, C_DecapsulateKey)(
@@ -3985,7 +4094,7 @@ CK_DEFINE_FUNCTION(CK_RV, C_DecapsulateKey)(
 
   locking.pfnUnlockMutex(session->slot->mutex);
 
-  memset(secret, 0, sizeof(secret));
+  OPENSSL_cleanse(secret, sizeof(secret));
 
   DOUT;
   return rv;

@@ -525,6 +525,63 @@ CK_ULONG do_get_mlkem_ciphertext_size(ykcs11_pkey_t *key) {
   return 0;
 }
 
+CK_RV do_encapsulate(ykcs11_pkey_t *key, CK_BYTE_PTR ciphertext, CK_ULONG_PTR ciphertext_len,
+                     CK_BYTE_PTR secret, CK_ULONG_PTR secret_len) {
+  // ML-KEM encapsulation needs nothing but the public key, so it runs here rather
+  // than on the YubiKey, which has no encapsulate APDU
+
+  if (key == NULL || ciphertext == NULL || ciphertext_len == NULL ||
+      secret == NULL || secret_len == NULL) {
+    return CKR_ARGUMENTS_BAD;
+  }
+
+#if (OPENSSL_VERSION_NUMBER >= 0x30600000L)
+  CK_RV rv;
+  size_t ct_len = 0;
+  size_t ss_len = 0;
+
+  ykcs11_pkey_ctx_t *ctx = EVP_PKEY_CTX_new_from_pkey(NULL, key, NULL);
+  if (ctx == NULL) {
+    return CKR_FUNCTION_FAILED;
+  }
+
+  if (EVP_PKEY_encapsulate_init(ctx, NULL) <= 0) {
+    rv = CKR_FUNCTION_FAILED;
+    goto encap_cleanup;
+  }
+
+  // EVP_PKEY_encapsulate fails rather than truncating when a buffer is too small,
+  // so ask for the sizes first and turn a short buffer into the error the caller
+  // expects instead of a generic failure
+  if (EVP_PKEY_encapsulate(ctx, NULL, &ct_len, NULL, &ss_len) <= 0) {
+    rv = CKR_FUNCTION_FAILED;
+    goto encap_cleanup;
+  }
+
+  if (ct_len > *ciphertext_len || ss_len > *secret_len) {
+    *ciphertext_len = ct_len;
+    *secret_len = ss_len;
+    rv = CKR_BUFFER_TOO_SMALL;
+    goto encap_cleanup;
+  }
+
+  if (EVP_PKEY_encapsulate(ctx, ciphertext, &ct_len, secret, &ss_len) <= 0) {
+    rv = CKR_FUNCTION_FAILED;
+    goto encap_cleanup;
+  }
+
+  *ciphertext_len = ct_len;
+  *secret_len = ss_len;
+  rv = CKR_OK;
+
+encap_cleanup:
+  EVP_PKEY_CTX_free(ctx);
+  return rv;
+#else
+  return CKR_FUNCTION_NOT_SUPPORTED;
+#endif
+}
+
 CK_BYTE do_get_key_algorithm(ykcs11_pkey_t *key) {
 
   if(key) { // EVP_PKEY_base_id doesn't handle NULL

@@ -1057,12 +1057,12 @@ static CK_RV get_puoa(ykcs11_slot_t *s, piv_obj_id_t obj, CK_ATTRIBUTE_PTR templ
     break;
 
   case CKA_ENCAPSULATE:
-    // Always false: encapsulation needs only the public key, so it is done off
-    // token and C_EncapsulateKey is a stub. Flip this to track the key type, the
-    // way CKA_DECAPSULATE does in get_proa(), once that function is implemented
+    // True for ML-KEM keys only, the mirror of CKA_DECAPSULATE in get_proa().
+    // PKCS#11 v3.2 section 5.18.8 requires this to be CK_TRUE before
+    // C_EncapsulateKey may be used with the key
     DBG("ENCAPSULATE");
     len = sizeof(CK_BBOOL);
-    b_tmp[0] = CK_FALSE;
+    b_tmp[0] = do_get_key_type(s->pkeys[piv_objects[obj].sub_id]) == CKK_ML_KEM ? CK_TRUE : CK_FALSE;
     data = b_tmp;
     break;
 

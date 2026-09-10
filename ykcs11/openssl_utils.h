@@ -57,6 +57,8 @@ CK_ULONG    do_get_key_bits(ykcs11_pkey_t *key);
 CK_ULONG    do_get_key_size(ykcs11_pkey_t *key);
 CK_ULONG    do_get_signature_size(ykcs11_pkey_t *key);
 CK_ULONG    do_get_mlkem_ciphertext_size(ykcs11_pkey_t *key);
+CK_RV       do_encapsulate(ykcs11_pkey_t *key, CK_BYTE_PTR ciphertext, CK_ULONG_PTR ciphertext_len,
+                           CK_BYTE_PTR secret, CK_ULONG_PTR secret_len);
 CK_BYTE     do_get_key_algorithm(ykcs11_pkey_t *key);
 CK_BBOOL    do_check_public_exponent(CK_BYTE_PTR data, CK_ULONG len);
 CK_RV       do_get_public_exponent(ykcs11_pkey_t *key, CK_BYTE_PTR data, CK_ULONG_PTR len);

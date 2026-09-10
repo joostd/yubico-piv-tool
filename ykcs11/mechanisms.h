@@ -56,15 +56,15 @@
 #define CKP_ML_KEM_768                 0x00000002UL
 #define CKP_ML_KEM_1024                0x00000003UL
 
-// CK_MECHANISM_INFO flags added by PKCS#11 v3.2 for key encapsulation. Defined as
-// a pair even though only CKF_DECAPSULATE is currently reported by any mechanism;
-// C_EncapsulateKey is a stub, so CKF_ENCAPSULATE must stay unset until it is real.
+// CK_MECHANISM_INFO flags added by PKCS#11 v3.2 for key encapsulation. Both are
+// reported by CKM_ML_KEM.
 #define CKF_ENCAPSULATE                0x10000000UL
 #define CKF_DECAPSULATE                0x20000000UL
 
 // Key object attributes added by PKCS#11 v3.2. Distinct from the mechanism flags
-// above: these describe what an individual key may be used for. v3.2 section 5.18.9
-// makes CKA_DECAPSULATE = CK_TRUE a precondition of C_DecapsulateKey.
+// above: these describe what an individual key may be used for. v3.2 sections 5.18.8
+// and 5.18.9 make CKA_ENCAPSULATE / CKA_DECAPSULATE = CK_TRUE a precondition of
+// C_EncapsulateKey / C_DecapsulateKey.
 #define CKA_ENCAPSULATE                0x00000633UL
 #define CKA_DECAPSULATE                0x00000634UL
 #endif

@@ -255,9 +255,9 @@ static void test_mechanism_list_and_info() {
     {1312, 2592, CKF_HW | CKF_SIGN | CKF_VERIFY},
     {1312, 2592, CKF_HW | CKF_SIGN | CKF_VERIFY},
     {800, 1568, CKF_HW | CKF_GENERATE_KEY_PAIR},
-    // CKM_ML_KEM decapsulates, it does not wrap or decrypt; see the comment on the
-    // matching entry in token.c for why CKF_ENCAPSULATE is absent too
-    {800, 1568, CKF_HW | CKF_DECAPSULATE}
+    // CKM_ML_KEM encapsulates and decapsulates, it does not wrap or decrypt; see
+    // the comment on the matching entry in token.c
+    {800, 1568, CKF_HW | CKF_ENCAPSULATE | CKF_DECAPSULATE}
   };
 
   init_connection();
