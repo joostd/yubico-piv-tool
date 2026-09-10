@@ -6,7 +6,7 @@
 |link:version.adoc[version]                                     | Returns the device's firmware version
 |link:status.adoc[status]                                       | Returns the device's metadata and content
 |list-readers                                                   | Lists the accessible smart card readers
-|link:key_generation.adoc[generate]                             | Generates and RSA or an EC key on a specific slot
+|link:key_generation.adoc[generate]                             | Generates an asymmetric key on a specific slot
 |link:key_import.adoc[import-key]                               | Imports a private key into a specific slot
 |link:key_import.adoc[import-cert, import-certificate]          | Imports an X509 certificate into a specific slot
 |link:key_generation.adoc[request, request-certificate]         | Generated a certification request for an asymmetric key stored on a specific slot

@@ -7,6 +7,10 @@ Signs input data
 The signing operation requires verifying the PIN code or the fingerprint if the YubiKey supports Bio verification.
 Use `-a verify-pin` to verify the PIN and `-a verify-bio` for fingerprint verification.
 
+For RSA and ECC keys the input data is hashed on the host and only the digest is sent to the YubiKey. ED25519 and the
+ML-DSA algorithms hash on the YubiKey instead, so the whole message is sent to it and `-H` has no effect. That puts an
+upper bound of just under 8192 bytes on the input for those algorithms.
+
 === Parameters
 
 |===================================
@@ -15,8 +19,8 @@ Use `-a verify-pin` to verify the PIN and `-a verify-bio` for fingerprint verifi
 
 |-s, --slot        | X | | What key slot to operate on | 9a, 9c, 9d, 9e, 82, 83, 84, 85, 86, 87, 88, 89,
                                                           8a, 8b, 8c, 8d, 8e, 8f, 90, 91, 92, 93, 94, 95, f9 |
-|-A, --algorithm   | | X | Signing key algorithm | RSA1024, RSA2048, RSA3072 (Requires YubiKey 5.7 or higher), RSA4096 (Requires YubiKey 5.7 or higher), ECCP256, ECCP384, ED25519 (Requires YubiKey 5.7 or higher) | RSA2048
-|-H, --hash        | | X | Hash to use for signatures | SHA1, SHA256, SHA384, SHA512 | SHA256
+|-A, --algorithm   | | X | Signing key algorithm | RSA1024, RSA2048, RSA3072 (Requires YubiKey 5.7 or higher), RSA4096 (Requires YubiKey 5.7 or higher), ECCP256, ECCP384, ED25519 (Requires YubiKey 5.7 or higher), ML-DSA-44, ML-DSA-65, ML-DSA-87 (Require YubiKey 6.0 or higher) | RSA2048
+|-H, --hash        | | X | Hash to use for signatures. Ignored by ED25519 and the ML-DSA algorithms, which take the message itself | SHA1, SHA256, SHA384, SHA512 | SHA256
 |-P, --pin         | | X | Pin/puk code for verification, if omitted pin/puk will be asked for | |
 |-i, --input       | | X | Filename to use as input. If left out, input will be read from Stdin | None or file name | Stdin
 |-o, --output      | | X | Filename to use as output. If left out, output will be printed to Stdout | None or file name | Stdout
@@ -31,3 +35,13 @@ Use `-a verify-pin` to verify the PIN and `-a verify-bio` for fingerprint verifi
 
     $ openssl dgst -sha512 -verify pubkey.pem -signature data.sig data.txt
     Verified OK
+
+With an ML-DSA key there is no digest to name, so the message goes to OpenSSL as it is:
+
+    $ yubico-piv-tool -a verify-pin --sign -s 9a -A ML-DSA-87 -i data.txt -o data.sig
+    Enter PIN:
+    Successfully verified PIN.
+    Signature successful!
+
+    $ openssl pkeyutl -verify -rawin -pubin -inkey pubkey.pem -sigfile data.sig -in data.txt
+    Signature Verified Successfully

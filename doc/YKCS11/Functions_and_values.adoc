@@ -30,10 +30,10 @@
 |C_Encrypt|| With RSA keys only. Uses OpenSSL encryption functions
 |C_EncryptUpdate|| With RSA keys only. Uses OpenSSL encryption functions
 |C_EncryptFinal|| With RSA keys only. Uses OpenSSL encryption functions
-|C_DecryptInit| CKM_RSA_X_509, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP | With RSA keys only.
-|C_Decrypt|| With RSA keys only.
-|C_DecryptUpdate|| With RSA keys only.
-|C_DecryptFinal|| With RSA keys only.
+|C_DecryptInit| CKM_RSA_X_509, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_ML_KEM | The RSA mechanisms decrypt. CKM_ML_KEM decapsulates, which is exposed here as decryption for the benefit of applications that predate PKCS#11 v3.2: the input must be a complete ML-KEM ciphertext and the output is the 32 byte shared secret. C_DecapsulateKey does the same thing in the way v3.2 intends
+|C_Decrypt|| See C_DecryptInit
+|C_DecryptUpdate|| Buffers input, no matter the mechanism
+|C_DecryptFinal|| See C_DecryptInit
 |C_DigestInit|CKM_SHA_1, CKM_SHA256, CKM_SHA384, CKM_SHA512| Uses OpenSSL digest functions
 |C_Digest|| Uses OpenSSL digest functions
 |C_DigestUpdate|| Uses OpenSSL digest functions
@@ -55,7 +55,9 @@ CKM_ECDSA_SHA1,
 CKM_ECDSA_SHA224, 
 CKM_ECDSA_SHA256, 
 CKM_ECDSA_SHA384,
-CKM_EDDSA|
+CKM_ECDSA_SHA512,
+CKM_EDDSA,
+CKM_ML_DSA| CKM_ML_DSA is pure ML-DSA: the YubiKey hashes the message itself, so the whole message is sent to it rather than a digest
 |C_Sign||
 |C_SignUpdate||
 |C_SignFinal||
@@ -75,14 +77,21 @@ CKM_ECDSA_SHA1,
 CKM_ECDSA_SHA224, 
 CKM_ECDSA_SHA256, 
 CKM_ECDSA_SHA384,
-CKM_EDDSA| Uses OpenSSL verification functions
+CKM_ECDSA_SHA512,
+CKM_EDDSA,
+CKM_ML_DSA| Uses OpenSSL verification functions
 |C_Verify|| Uses OpenSSL verification functions
 |C_VerifyUpdate|| Uses OpenSSL verification functions
 |C_VerifyFinal|| Uses OpenSSL verification functions
 |C_GenerateKeyPair|CKM_RSA_PKCS_KEY_PAIR_GEN,
 CKM_EC_KEY_PAIR_GEN,
 CKM_EC_EDWARDS_KEY_PAIR_GEN,
-CKM_EC_MONTGOMERY_KEY_PAIR_GEN|
+CKM_EC_MONTGOMERY_KEY_PAIR_GEN,
+CKM_ML_DSA_KEY_PAIR_GEN,
+CKM_ML_KEM_KEY_PAIR_GEN| The two post-quantum mechanisms require a YubiKey with firmware 6.0 or higher and require CKA_PARAMETER_SET in the public key template, either as a CK_ULONG parameter set value or as the DER encoded NIST OID of the parameter set. Without it the call returns CKR_TEMPLATE_INCOMPLETE
+|C_DeriveKey|CKM_ECDH1_DERIVE| With EC and X25519 keys. Produces the secret key object described below
+|C_EncapsulateKey|CKM_ML_KEM| Requires CKA_ENCAPSULATE on the public key, which is CK_TRUE for ML-KEM keys only. Encapsulation needs nothing but the public key, so it runs in OpenSSL and neither reaches the YubiKey nor requires a login. Produces the secret key object described below
+|C_DecapsulateKey|CKM_ML_KEM| Requires CKA_DECAPSULATE on the private key, which is CK_TRUE for ML-KEM keys only. Runs on the YubiKey and requires a login. Produces the secret key object described below
 |=======================
 
 == Supported PKCS#11 Objects
@@ -93,58 +102,79 @@ implemented and what it maps to.
 [options="header"]
 |==============================================================================
 | PKCS#11 | Supported CKK | Comment
-| CKO_PRIVATE_KEY | CKK_RSA, CKK_EC, CKK_EC_EDWARDS, CKK_EC_MONTGOMERY |
+| CKO_PRIVATE_KEY | CKK_RSA, CKK_EC, CKK_EC_EDWARDS, CKK_EC_MONTGOMERY, CKK_ML_DSA, CKK_ML_KEM |
 RSA 1024, 2048, 3072 (Requires YubiKey 5.7 or higher) and 4096 (Requires YubiKey 5.7 or higher) with e=0x10001,
-EC with secp256r1 and secp384r1, ED25519 (Requires YubiKey 5.7 or higher) and X25519 (Requires YubiKey 5.7 or higher)
+EC with secp256r1 and secp384r1, ED25519 (Requires YubiKey 5.7 or higher) and X25519 (Requires YubiKey 5.7 or higher),
+ML-DSA-44, ML-DSA-65, ML-DSA-87, ML-KEM-512, ML-KEM-768 and ML-KEM-1024 (Require YubiKey 6.0 or higher)
 | CKO_PUBLIC_KEY | | Stored in X509 Certificates
 | CKO_CERTIFICATE | | X509 Certificates containing either the public key or the attestation certificate
-| CKO_DATA | | 
+| CKO_DATA | |
+| CKO_SECRET_KEY | CKK_GENERIC_SECRET | The shared secret produced by C_DeriveKey, C_EncapsulateKey or C_DecapsulateKey. It is a session object, not stored on the YubiKey, and there is exactly one of it per slot: every one of those three calls overwrites whatever the previous one left there
 |==============================================================================
 
 == Supported Attributes per Object Type
 
 [options="header"]
 |=================================
-|Attribute | Private key object | Public key object | Certificate object | Data object
-|CKA_CLASS             |X|X|X|X
-|CKA_ID                |X|X|X|X
-|CKA_TOKEN             |X|X|X|X
-|CKA_PRIVATE           |X|X|X|X
-|CKA_LABEL             |X|X|X|X
-|CKA_APPLICATION       | | | |X
-|CKA_OBJECT_ID         | | | |X
-|CKA_MODIFIABLE        |X|X|X|X
-|CKA_COPYABLE          |X|X|X|X
-|CKA_DESTROYABLE       |X|X|X|X
-|CKA_VALUE             | | |X|X
-|CKA_SUBJECT           | | |X|
-|CKA_ISSUER            | | |X|
-|CKA_SERIALNUMBER      | | |X|
-|CKA_CERTIFICATE_TYPE  | | |X|
-|CKA_TRUSTED           | |X|X|
-|CKA_KEY_TYPE          |X|X| |
-|CKA_SENSITIVE         |X|X| |
-|CKA_ALWAYS_SENSITIVE  |X|X| |
-|CKA_EXTRACTABLE       |X|X| |
-|CKA_NEVER_EXTRACTABLE |X|X| |
-|CKA_LOCAL             |X|X| |
-|CKA_ENCRYPT           |X|X| |
-|CKA_DECRYPT           |X|X| |
-|CKA_WRAP              |X|X| |
-|CKA_WRAP_WITH_TRUSTED |X|X| |
-|CKA_UNWRAP            |X|X| |
-|CKA_SIGN              |X|X| |
-|CKA_SIGN_RECOVER      |X|X| |
-|CKA_VERIFY            |X|X| |
-|CKA_VERIFY_RECOVER    |X|X| |
-|CKA_DERIVE            |X|X| |
-|CKA_MODULUS           |X|X| |
-|CKA_EC_POINT          |X|X| |
-|CKA_EC_PARAMS         |X|X| |
-|CKA_MODULUS_BITS      |X|X| |
-|CKA_PUBLIC_EXPONENT   |X|X| |
-|CKA_ALWAYS_AUTHENTICATE |X|X| |
+|Attribute | Private key object | Public key object | Secret key object | Certificate object | Data object
+|CKA_CLASS             |X|X|X|X|X
+|CKA_ID                |X|X|X|X|X
+|CKA_TOKEN             |X|X|X|X|X
+|CKA_PRIVATE           |X|X|X|X|X
+|CKA_LABEL             |X|X|X|X|X
+|CKA_APPLICATION       | | | | |X
+|CKA_OBJECT_ID         | | | | |X
+|CKA_MODIFIABLE        |X|X|X|X|X
+|CKA_COPYABLE          |X|X| |X|X
+|CKA_DESTROYABLE       |X|X| |X|X
+|CKA_VALUE             | |X|X|X|X
+|CKA_SUBJECT           | | | |X|
+|CKA_ISSUER            | | | |X|
+|CKA_SERIALNUMBER      | | | |X|
+|CKA_CERTIFICATE_TYPE  | | | |X|
+|CKA_TRUSTED           | |X| |X|
+|CKA_KEY_TYPE          |X|X|X| |
+|CKA_SENSITIVE         |X|X|X| |
+|CKA_ALWAYS_SENSITIVE  |X|X|X| |
+|CKA_EXTRACTABLE       |X|X|X| |
+|CKA_NEVER_EXTRACTABLE |X|X|X| |
+|CKA_LOCAL             |X|X|X| |
+|CKA_ENCRYPT           |X|X|X| |
+|CKA_DECRYPT           |X|X|X| |
+|CKA_WRAP              |X|X| | |
+|CKA_WRAP_WITH_TRUSTED |X|X| | |
+|CKA_UNWRAP            |X|X| | |
+|CKA_SIGN              |X|X| | |
+|CKA_SIGN_RECOVER      |X|X| | |
+|CKA_VERIFY            |X|X| | |
+|CKA_VERIFY_RECOVER    |X|X| | |
+|CKA_DERIVE            |X|X|X| |
+|CKA_ENCAPSULATE       | |X| | |
+|CKA_DECAPSULATE       |X| | | |
+|CKA_MODULUS           |X|X| | |
+|CKA_EC_POINT          |X|X| | |
+|CKA_EC_PARAMS         |X|X| | |
+|CKA_MODULUS_BITS      |X|X| | |
+|CKA_PUBLIC_EXPONENT   |X|X| | |
+|CKA_PARAMETER_SET     |X|X| | |
+|CKA_PUBLIC_KEY_INFO   | |X| | |
+|CKA_ALWAYS_AUTHENTICATE |X|X| | |
+|CKA_YUBICO_TOUCH_POLICY |X| | | |
+|CKA_YUBICO_PIN_POLICY   |X| | | |
 |=================================
+
+The attributes that describe a particular kind of key are only readable from a key of that kind: CKA_MODULUS,
+CKA_MODULUS_BITS and CKA_PUBLIC_EXPONENT from RSA keys, CKA_EC_POINT and CKA_EC_PARAMS from EC keys, and
+CKA_PARAMETER_SET from ML-DSA and ML-KEM keys. Reading one of them from a key of another kind returns
+CKR_ATTRIBUTE_TYPE_INVALID.
+
+CKA_ENCAPSULATE and CKA_DECAPSULATE work differently: they are readable from any public respectively private key and
+are CK_TRUE for ML-KEM keys and CK_FALSE for everything else. PKCS#11 v3.2 makes them the precondition for calling
+C_EncapsulateKey and C_DecapsulateKey, so an application can use them to find the ML-KEM keys on the token without
+looking at CKA_KEY_TYPE.
+
+CKA_YUBICO_TOUCH_POLICY and CKA_YUBICO_PIN_POLICY are vendor defined attributes. They return the touch and PIN policy
+of the slot as a single byte each, using the values of YKPIV_TOUCHPOLICY_* and YKPIV_PINPOLICY_* from `ykpiv.h`.
 
 == Key Alias per Slot and Object Type
 

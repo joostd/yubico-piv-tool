@@ -13,6 +13,10 @@ Generating a key pair will have the public key as an output (action "generate").
 generate a self signed certificate (action "selfsign") or a certificate request (action "request-certificate"). The
 resulting certificate should then be imported into the same slot (action "import-certificate").
 
+Both "selfsign" and "request-certificate" sign with the key in the slot, so they only work for a key that can sign.
+X25519 and the ML-KEM algorithms are key agreement and key encapsulation algorithms respectively and cannot sign, so a
+slot holding one of those goes straight from "generate" to "import-certificate" with a certificate issued elsewhere.
+
 Generating the key pair and importing the certificate are both actions that require
 authentication, which is done by providing the management key. If no management key
 is provided, the tool will try to authenticate using the default management key.footnote:[It is strongly recommended to
@@ -31,7 +35,7 @@ verify the PIN and `-a verify-bio` for fingerprint verification.
 |-s, --slot        | X | | What key slot to operate on | 9a, 9c, 9d, 9e, 82, 83, 84, 85, 86, 87, 88, 89,
                                                           8a, 8b, 8c, 8d, 8e, 8f, 90, 91, 92, 93, 94, 95, f9 |
 |-k, --key         | X | | Management key to use, if no value is specified key will be asked for | | 010203040506070801020304050607080102030405060708
-|-A, --algorithm   | | X | What algorithm to use to generate the key pair | RSA1024, RSA2048, RSA3072 (Requires YubiKey 5.7 or higher), RSA4096 (Requires YubiKey 5.7 or higher), ECCP256, ECCP384, ED25519 (Requires YubiKey 5.7 or higher), X25519 (Requires YubiKey 5.7 or higher) | RSA2048
+|-A, --algorithm   | | X | What algorithm to use to generate the key pair | RSA1024, RSA2048, RSA3072 (Requires YubiKey 5.7 or higher), RSA4096 (Requires YubiKey 5.7 or higher), ECCP256, ECCP384, ED25519 (Requires YubiKey 5.7 or higher), X25519 (Requires YubiKey 5.7 or higher), ML-DSA-44, ML-DSA-65, ML-DSA-87, ML-KEM-512, ML-KEM-768, ML-KEM-1024 (The six post-quantum algorithms require YubiKey 6.0 or higher) | RSA2048
 |-i, --input       | | X | Filename to use as input. If left out, input will be read from Stdin. The only supported format for public key is PEM | None or file name | Stdin
 |-o, --output      | | X | Filename to use as output. If left out, output will be printed to Stdout | None or file name | Stdout
 |-K, --key-format  | | X | Format of the certificate to import. Note that the public key must be in PEM format | PEM, PKCS12, GZIP, DER | PEM
@@ -111,3 +115,30 @@ After sending the certificate request to the CA and getting a signed certificate
 
     $ yubico-piv-tool -a import-certificate -s 9c -i cert.pem
     Successfully imported a new certificate.
+
+==== Post-quantum key on slot 9a
+
+Requires a YubiKey with firmware 6.0 or higher. ML-DSA public keys and the certificates around them are much larger
+than their classical counterparts, so these examples write them to files instead of to the terminal.
+
+    $ yubico-piv-tool -a generate -s 9a -A ML-DSA-87 -k -o pub.key
+    Successfully generated a new private key.
+
+    $ yubico-piv-tool -a verify-pin -a selfsign -s 9a -S '/CN=piv_auth/OU=test/O=example.com/' -i pub.key -o cert.pem
+    Enter PIN:
+    Successfully verified PIN.
+    Successfully generated a new self signed certificate.
+
+    $ yubico-piv-tool -a import-certificate -s 9a -i cert.pem -k
+    Successfully imported a new certificate.
+
+==== Post-quantum key encapsulation key on slot 9d
+
+An ML-KEM key cannot sign, so the sequence stops after "generate" and the certificate, if the slot needs one at all,
+has to come from somewhere else.
+
+    $ yubico-piv-tool -a generate -s 9d -A ML-KEM-768 -k -o kem.pub
+    Successfully generated a new private key.
+
+The key is then used through link:test-decapsulation.adoc[test-decapsulate] or through the PKCS#11 module, see
+link:../YKCS11/Functions_and_values.adoc[YKCS11 functions and values].

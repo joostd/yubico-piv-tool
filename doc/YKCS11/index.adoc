@@ -5,6 +5,12 @@ application running on a YubiKey.
 This module is based on version 2.40 of the PKCS#11 (Cryptoki) specifications. The complete specifications are available at
 https://docs.oasis-open.org/pkcs11/pkcs11-base/v2.40/os/pkcs11-base-v2.40-os.html[oasis-open.org].
 
+`C_GetInterfaceList` offers three interfaces, all named "PKCS 11": version 3.2, version 3.0 and version 2.40, in that
+order, so an application that asks for no particular version gets the 3.2 one. Of the entry points added after 3.0 only
+`C_EncapsulateKey` and `C_DecapsulateKey` are implemented, the remaining ones are NULL and must be treated as
+unsupported. The v3.2 specification is available at
+https://docs.oasis-open.org/pkcs11/pkcs11-spec/v3.2/pkcs11-spec-v3.2.html[oasis-open.org].
+
 === Building
 YKCS11 is automatically built as part of `yubico-piv-tool` and the
 following command will suffice:
