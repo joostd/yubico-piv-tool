@@ -2551,6 +2551,17 @@ static bool test_decipher(ykpiv_state *state, enum enum_slot slot,
       } else {
         fprintf(stderr, "ECDH exchange with card failed!\n");
       }
+    } else {
+      /* Anything that is neither RSA nor NIST EC used to drop out of this chain
+       * without a word, leaving the action to fail with no output at all.
+       * ML-KEM is a key encapsulation mechanism rather than a public key
+       * encryption scheme, so there is no ciphertext of our choosing to send the
+       * card; ED25519 and ML-DSA sign and do not decipher; X25519 does agree
+       * keys, and both the card and libykpiv support it, but this action has
+       * never implemented that exchange. */
+      fprintf(stderr, "Deciphering with ");
+      print_algorithm_string(algorithm, stderr);
+      fprintf(stderr, " keys is not supported by test-decipher.\n");
     }
   }
 

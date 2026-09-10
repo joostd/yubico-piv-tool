@@ -817,6 +817,16 @@ ykpiv_rc ykpiv_util_generate_key(ykpiv_state *state, uint8_t slot, uint8_t algor
     DBG("RSA3072, RSA4096, ED25519 and X25519 keys are only supported in YubiKey version 5.7.0 and newer");
     return YKPIV_NOT_SUPPORTED;
   }
+  // token_generate_key in ykcs11 already gates PQC this way, so without the same
+  // check here the two front ends disagree: PKCS#11 reports the algorithm as
+  // unsupported while the tool passes it to the card and surfaces whatever
+  // opaque error comes back. Beta devices report 0.0.1, which
+  // is_version_compatible reads as new enough for anything, so this opens on
+  // prototype hardware while still turning a 5.x YubiKey away with a real error
+  if (YKPIV_IS_PQC(algorithm) && !is_version_compatible(state, 6, 0, 0)) {
+    DBG("ML-DSA and ML-KEM keys are only supported in YubiKey version 6.0.0 and newer");
+    return YKPIV_NOT_SUPPORTED;
+  }
   if ((algorithm == YKPIV_ALGO_RSA1024 || algorithm == YKPIV_ALGO_RSA2048) && !is_version_compatible(state, 4, 3, 5)) {
     const char *psz_msg = NULL;
     setting_roca = setting_get_bool(sz_setting_roca, true);
