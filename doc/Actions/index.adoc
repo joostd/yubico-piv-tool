@@ -20,6 +20,7 @@
 |link:attest.adoc[attest]                                       | Generates an X509 certificate for an asymmetric key that was generated inside the YubiKey
 |link:test-signature.adoc[test-signature]                       | Tests the digital signing function
 |link:test-decryption.adoc[test-decipher]                       | Tests the decryption function
+|link:test-decapsulation.adoc[test-decapsulate]                 | Tests the ML-KEM decapsulation function
 |set-mgm-key                                                    | Set the management key required to perform administrative actions on the PIV interface
 |pin-retries                                                    | Changes the number of retries allowed before the PIN or the PUK are blocked
 |verify-pin, verify                                             | Verifies the PIN code required to access the PIV interface

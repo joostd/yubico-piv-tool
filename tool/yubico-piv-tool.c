@@ -2581,6 +2581,162 @@ decipher_out:
   return ret;
 }
 
+/* ML-KEM is a key encapsulation mechanism rather than a public key encryption
+ * scheme: the shared secret falls out of encapsulation instead of being handed
+ * to it, so there is no chosen plaintext and this cannot be folded into
+ * test-decipher. The round trip is to encapsulate against the slot's public key
+ * here, decapsulate the resulting ciphertext on the card, and check that both
+ * sides arrived at the same secret. */
+static bool test_decapsulate(ykpiv_state *state, enum enum_slot slot,
+    const char *input_file_name, enum enum_key_format key_format, int verbose) {
+  bool ret = false;
+  X509 *x509 = NULL;
+  EVP_PKEY *pubkey = NULL;
+  FILE *input_file = open_file(input_file_name, key_file_mode(key_format, false));
+#if (OPENSSL_VERSION_NUMBER >= 0x30600000L)
+  EVP_PKEY_CTX *ctx = NULL;
+  BIO *bio = NULL;
+  unsigned char input[YKPIV_OBJ_MAX_SIZE] = {0};
+  /* ML-KEM-1024 has the largest ciphertext of the three parameter sets at 1568
+   * bytes, and every set derives a 32 byte shared secret */
+  unsigned char ciphertext[2048] = {0};
+  unsigned char secret[64] = {0};
+  unsigned char secret2[64] = {0};
+  size_t input_len = 0;
+  size_t ct_len = 0;
+  size_t secret_len = 0;
+  size_t secret2_len = sizeof(secret2);
+  unsigned char algorithm = 0;
+  int key = 0;
+#endif
+
+  if(!input_file) {
+    fprintf(stderr, "Failed opening input file %s.\n", input_file_name);
+    return false;
+  }
+
+#if (OPENSSL_VERSION_NUMBER >= 0x30600000L)
+  if(key_format != key_format_arg_PEM && key_format != key_format_arg_DER) {
+    fprintf(stderr, "Only PEM and DER format are supported for test-decapsulate.\n");
+    goto decap_out;
+  }
+
+  if(isatty(fileno(input_file))) {
+    fprintf(stderr, "Please paste the public key to encapsulate for...\n");
+  }
+
+  /* An ML-KEM key cannot sign, so it cannot self-sign a certificate either and a
+   * bare public key straight out of read-public-key is the likelier of the two
+   * inputs. Accept both, and read the stream into memory first so that the
+   * second attempt is possible even when the input is a pipe or a terminal. */
+  input_len = fread(input, 1, sizeof(input), input_file);
+  if(input_len == 0) {
+    fprintf(stderr, "Failed reading input for test-decapsulate.\n");
+    goto decap_out;
+  }
+  bio = BIO_new_mem_buf(input, (int)input_len);
+  if(!bio) {
+    fprintf(stderr, "Failed to allocate an input buffer.\n");
+    goto decap_out;
+  }
+  if(key_format == key_format_arg_PEM) {
+    pubkey = PEM_read_bio_PUBKEY(bio, NULL, NULL, NULL);
+    if(!pubkey && BIO_reset(bio) >= 0) {
+      x509 = PEM_read_bio_X509(bio, NULL, NULL, NULL);
+    }
+  } else {
+    pubkey = d2i_PUBKEY_bio(bio, NULL);
+    if(!pubkey && BIO_reset(bio) >= 0) {
+      x509 = d2i_X509_bio(bio, NULL);
+    }
+  }
+  if(x509) {
+    pubkey = X509_get_pubkey(x509);
+  }
+  if(!pubkey) {
+    fprintf(stderr, "Failed loading a public key or certificate for test-decapsulate.\n");
+    goto decap_out;
+  }
+
+  algorithm = get_algorithm(pubkey);
+  if(algorithm == 0) {
+    goto decap_out;
+  }
+  if(!YKPIV_IS_MLKEM(algorithm)) {
+    fprintf(stderr, "test-decapsulate needs an ML-KEM key, but ");
+    print_algorithm_string(algorithm, stderr);
+    fprintf(stderr, " was given.\n");
+    goto decap_out;
+  }
+  key = get_slot_hex(slot);
+
+  ctx = EVP_PKEY_CTX_new_from_pkey(NULL, pubkey, NULL);
+  if(!ctx || EVP_PKEY_encapsulate_init(ctx, NULL) <= 0) {
+    fprintf(stderr, "Failed to initialize ML-KEM encapsulation.\n");
+    ERR_print_errors_fp(stderr);
+    goto decap_out;
+  }
+  if(EVP_PKEY_encapsulate(ctx, NULL, &ct_len, NULL, &secret_len) <= 0) {
+    fprintf(stderr, "Failed to determine the ML-KEM encapsulation sizes.\n");
+    ERR_print_errors_fp(stderr);
+    goto decap_out;
+  }
+  if(ct_len > sizeof(ciphertext) || secret_len > sizeof(secret)) {
+    fprintf(stderr, "ML-KEM ciphertext (%zu bytes) or shared secret (%zu bytes) is larger than expected.\n",
+        ct_len, secret_len);
+    goto decap_out;
+  }
+  if(EVP_PKEY_encapsulate(ctx, ciphertext, &ct_len, secret, &secret_len) <= 0) {
+    fprintf(stderr, "Failed performing ML-KEM encapsulation.\n");
+    ERR_print_errors_fp(stderr);
+    goto decap_out;
+  }
+
+  if(ykpiv_decipher_data(state, ciphertext, ct_len, secret2, &secret2_len, algorithm, key) != YKPIV_OK) {
+    fprintf(stderr, "Failed ML-KEM decapsulation!\n");
+    goto decap_out;
+  }
+
+  if(verbose) {
+    fprintf(stderr, "ML-KEM ciphertext is %zu bytes.\n", ct_len);
+    fprintf(stderr, "Shared secret host generated: ");
+    dump_data(secret, secret_len, stderr, true, format_arg_hex);
+    fprintf(stderr, "Shared secret card generated: ");
+    dump_data(secret2, secret2_len, stderr, true, format_arg_hex);
+  }
+
+  if(secret_len == secret2_len && memcmp(secret, secret2, secret_len) == 0) {
+    fprintf(stderr, "Successfully performed ML-KEM decapsulation with card.\n");
+    ret = true;
+  } else {
+    fprintf(stderr, "ML-KEM decapsulation with card failed!\n");
+  }
+
+decap_out:
+  if(ctx) {
+    EVP_PKEY_CTX_free(ctx);
+  }
+  if(bio) {
+    BIO_free(bio);
+  }
+#else
+  (void)state;
+  (void)slot;
+  (void)verbose;
+  fprintf(stderr, "test-decapsulate requires OpenSSL 3.6 or later for ML-KEM support.\n");
+#endif
+  if(pubkey) {
+    EVP_PKEY_free(pubkey);
+  }
+  if(x509) {
+    X509_free(x509);
+  }
+  if(input_file != stdin) {
+    fclose(input_file);
+  }
+  return ret;
+}
+
 static bool list_readers(ykpiv_state *state) {
   char readers[2048] = {0};
   char *reader_ptr;
@@ -2761,6 +2917,7 @@ int main(int argc, char *argv[]) {
       case action_arg_readMINUS_publicMINUS_key:
       case action_arg_testMINUS_signature:
       case action_arg_testMINUS_decipher:
+      case action_arg_testMINUS_decapsulate:
       case action_arg_attest:
       case action_arg_deleteMINUS_key:
         if(args_info.slot_arg == slot__NULL) {
@@ -2934,6 +3091,7 @@ int main(int argc, char *argv[]) {
       case action_arg_status:
       case action_arg_testMINUS_signature:
       case action_arg_testMINUS_decipher:
+      case action_arg_testMINUS_decapsulate:
       case action_arg_listMINUS_readers:
       case action_arg_attest:
       case action_arg_readMINUS_object:
@@ -3150,6 +3308,12 @@ int main(int argc, char *argv[]) {
         break;
       case action_arg_testMINUS_decipher:
         if(test_decipher(state, args_info.slot_arg, args_info.input_arg,
+              args_info.key_format_arg, verbosity) == false) {
+          ret = EXIT_FAILURE;
+        }
+        break;
+      case action_arg_testMINUS_decapsulate:
+        if(test_decapsulate(state, args_info.slot_arg, args_info.input_arg,
               args_info.key_format_arg, verbosity) == false) {
           ret = EXIT_FAILURE;
         }

@@ -1,0 +1,73 @@
+== Test Decapsulation
+    $ yubico-piv-tool -a read-public-key -s <slot> [ -o pub.pem ]
+    $ yubico-piv-tool -a verify-pin -a test-decapsulate -s <slot> [ -P <PIN code> -i pub.pem ]
+
+=== Description
+Tests the ML-KEM decapsulation function.
+
+ML-KEM is a key encapsulation mechanism rather than a public key encryption scheme. The shared secret comes
+out of encapsulation instead of being handed to it, so there is no plaintext of your choosing to encrypt and
+`test-decipher` cannot cover it. `test-decapsulate` performs the round trip instead: it encapsulates against
+the public key of the slot, sends the resulting ciphertext to the YubiKey to be decapsulated, and checks that
+both sides arrived at the same shared secret.
+
+The action only accepts ML-KEM keys. Use `test-decipher` for RSA decryption and ECDH, and `test-signature`
+for the signing algorithms.
+
+`test-decapsulate` requires verifying the PIN code, or the fingerprint if the YubiKey supports Bio
+verification, in an action that takes place before it. Use `-a verify-pin` to verify the PIN and
+`-a verify-bio` for fingerprint verification.
+
+Performing the test requires the public key of the slot to test, which is obtained using the
+"read-public-key" action. An X509 certificate containing the key is also accepted, but note that an ML-KEM
+key cannot sign and so cannot produce a self signed certificate.
+
+ML-KEM requires a YubiKey with firmware version 6.0.0 or later, and a build of yubico-piv-tool against
+OpenSSL 3.6 or later.
+
+=== Parameters
+
+|===================================
+|Parameter         | Required | Optional | Description | Possible values | Default value
+
+|-s, --slot        | X | | What key slot to operate on | 9a, 9c, 9d, 9e, 82, 83, 84, 85, 86, 87, 88, 89,
+                                                          8a, 8b, 8c, 8d, 8e, 8f, 90, 91, 92, 93, 94, 95, f9 |
+|-P, --pin         | | X | Pin/puk code for verification, if omitted pin/puk will be asked for | |
+|-i, --input       | | X | Filename to use as input. If left out, input will be read from Stdin | None or file name | Stdin
+|-K, --key-format  | | X | Format of the input public key or certificate | PEM, DER | PEM
+|-v, --verbose     | | X | Print the ciphertext size and both shared secrets | |
+|===================================
+
+=== Examples
+
+    $ yubico-piv-tool -a read-public-key -s 9d -o pub.pem
+    $ yubico-piv-tool -a verify-pin -a test-decapsulate -s 9d -i pub.pem
+    Enter PIN:
+    Successfully verified PIN.
+    Successfully performed ML-KEM decapsulation with card.
+
+It is also possible to combine the commands above into one single command (notice the order of the actions):
+
+    $ yubico-piv-tool -a read-public-key -a verify-pin -a test-decapsulate -s 9d -o pub.pem -i pub.pem
+    Enter PIN:
+    Successfully verified PIN.
+    Successfully performed ML-KEM decapsulation with card.
+
+With `-v` the ciphertext size and both copies of the shared secret are printed, which is one way to confirm
+which ML-KEM parameter set the slot holds (the ciphertext is 768 bytes for ML-KEM-512, 1088 for ML-KEM-768
+and 1568 for ML-KEM-1024):
+
+    $ yubico-piv-tool -a verify-pin -a test-decapsulate -s 9d -i pub.pem -v
+    Enter PIN:
+    Successfully verified PIN.
+    ML-KEM ciphertext is 1088 bytes.
+    Shared secret host generated: 27 29 22 29 e5 73 09 0c f6 a1 45 2b 74 65 85 13 2c 83 a1 20 e7 2b b8 a0 c2 2f 72 f0 e1 fe a4 60
+    Shared secret card generated: 27 29 22 29 e5 73 09 0c f6 a1 45 2b 74 65 85 13 2c 83 a1 20 e7 2b b8 a0 c2 2f 72 f0 e1 fe a4 60
+    Successfully performed ML-KEM decapsulation with card.
+
+If the public key given does not belong to the key in the slot, the two secrets differ and the test fails:
+
+    $ yubico-piv-tool -a verify-pin -a test-decapsulate -s 9d -i other.pem
+    Enter PIN:
+    Successfully verified PIN.
+    ML-KEM decapsulation with card failed!

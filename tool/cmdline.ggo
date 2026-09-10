@@ -32,7 +32,7 @@ option "action" a "Action to take" values="version","generate","set-mgm-key",
        "reset","pin-retries","import-key","import-certificate","set-chuid",
        "request-certificate","verify-pin","verify-bio","change-pin","change-puk","unblock-pin",
        "selfsign-certificate","delete-certificate","read-certificate", "read-public-key", "status",
-       "test-signature","test-decipher","list-readers","set-ccc","write-object",
+       "test-signature","test-decipher","test-decapsulate","list-readers","set-ccc","write-object",
        "read-object","attest", "move-key", "delete-key" enum multiple
 text   "
        Multiple actions may be given at once and will be executed in order
