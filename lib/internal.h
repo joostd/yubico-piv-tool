@@ -74,10 +74,30 @@ extern "C"
 
 #define CB_BUF_MAX_NEO      2048
 #define CB_BUF_MAX_YK4      3072
-// firmware 6 grew the message buffer to make room for post-quantum
-// certificates, which do not come close to fitting in the YK4 one: an ML-DSA-87
-// attestation certificate alone runs to over 7 kB
-#define CB_BUF_MAX_YK6      8192
+// firmware 6 grew the message buffer, but by how much depends on the build, and
+// the 8192 the PQC work assumed matches neither. Measured with PUT DATA against
+// an empty retired-slot object:
+//
+//   6.0.0.alpha.7  object <= 4919 (4928 on the wire), 4920 -> 0x6700. 4928 is
+//                  also yubikey-manager's _MaxApduSize.YK6
+//   6.0.0.alpha.8  object <= 19366 (19375 on the wire), 19367 -> 0x6700. ykman
+//                  6.0.0-dev.1 stops at exactly the same 19366
+//
+// Both report version 6.0.0, so is_version_compatible() cannot tell them apart
+// and this has to be one number. It is alpha.8's: capping everyone at alpha.7's
+// would block the certificates this is all for, whereas overshooting on
+// alpha.7 costs one round trip and an 0x6700, which _ykpiv_save_object below
+// reports as a size error instead of passing on as "parse error". Largest
+// certificate that fits is 19357 bytes of DER, so all three ML-DSA sizes do
+// (3977 / 5506 / 7464)
+//
+// Measure this on a freshly reset card and never with a binary search. The
+// total object arena is only about 36 kB and alpha.8 does not coalesce freed
+// blocks, so a run of allocations of increasing size -- which is exactly what a
+// search does -- strands a hole each time and exhausts the card. The failures
+// that causes are 0x6581, not 0x6700, and they make the ceiling look like 12000
+// or 4930 and wander. Only a PIV reset clears it.
+#define CB_BUF_MAX_YK6      19375
 #define CB_BUF_MAX          CB_BUF_MAX_YK4
 
 #define CB_ATR_MAX          33

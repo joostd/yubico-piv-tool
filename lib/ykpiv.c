@@ -2510,9 +2510,10 @@ ykpiv_rc _ykpiv_save_object(
     int object_id,
     unsigned char *indata,
     size_t len) {
-  // sized for firmware 6, whose objects hold post-quantum certificates several
-  // times larger than anything the YK4 buffer was meant for. _ykpiv_transfer_data
-  // chains the APDUs, and a device that cannot take an object this big says so
+  // sized for firmware 6, whose message buffer is the largest of the three.
+  // _ykpiv_transfer_data chains the APDUs, but the card reassembles them and
+  // rejects the whole command with 0x6700 if the total exceeds its buffer, so
+  // callers must bound the object by _obj_size_max() before getting here
   unsigned char data[CB_BUF_MAX_YK6] = {0};
   unsigned char *dataptr = data;
   unsigned char templ[] = {0, YKPIV_INS_PUT_DATA, 0x3f, 0xff};
@@ -2537,6 +2538,13 @@ ykpiv_rc _ykpiv_save_object(
   if((res = _ykpiv_transfer_data(state, templ, data, (unsigned long)(dataptr - data), NULL, &outlen,
     &sw)) != YKPIV_OK) {
     return res;
+  }
+  // PUT DATA answers an object larger than its message buffer with 0x6700,
+  // which translates to YKPIV_PARSE_ERROR and reads as though the object were
+  // malformed. In this one command it can only mean the object is too big
+  if(sw == SW_ERR_WRONG_LENGTH) {
+    DBG("Object of %zu bytes is larger than this firmware's message buffer", len);
+    return YKPIV_SIZE_ERROR;
   }
   return ykpiv_translate_sw_ex(__FUNCTION__, sw);
 }

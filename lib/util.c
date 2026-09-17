@@ -398,10 +398,12 @@ ykpiv_rc ykpiv_util_free(ykpiv_state *state, void *data) {
 
 ykpiv_rc ykpiv_util_read_cert(ykpiv_state *state, uint8_t slot, uint8_t **data, size_t *data_len) {
   ykpiv_rc res = YKPIV_OK;
-  // sized for the largest device rather than for this one, since the cost is
-  // stack we have and the alternative is failing to read a certificate the card
-  // was perfectly happy to hand over
-  uint8_t buf[CB_BUF_MAX_YK6] = {0};
+  // sized for the largest response the card can chunk back rather than for this
+  // device, since the cost is stack we have and the alternative is failing to
+  // read a certificate the card was perfectly happy to hand over. Deliberately
+  // not CB_BUF_MAX_YK6: that bounds what we may *send*, and the response side
+  // is reassembled across several 61xx chunks
+  uint8_t buf[YKPIV_OBJ_MAX_SIZE] = {0};
   size_t cbBuf = sizeof(buf);
 
   if ((NULL == data )|| (NULL == data_len)) return YKPIV_ARGUMENT_ERROR;

@@ -719,7 +719,10 @@ extern "C"
 #define TAG_CERT_COMPRESS     0x71
 #define TAG_CERT_LRC          0xFE
 
-#define YKPIV_OBJ_MAX_SIZE 8192  // Increased for ML-DSA-87 certificates and DER encoding (up to ~8KB)
+// Bounds the APDU union and the buffers objects are reassembled into. Has to
+// clear CB_BUF_MAX_YK6, which firmware 6.0.0.alpha.8 puts at 19375 -- the 8192
+// the PQC work assumed is both too small for that and, on alpha.7, far too big
+#define YKPIV_OBJ_MAX_SIZE 20480
 
 #define YKPIV_INS_VERIFY 0x20
 #define YKPIV_INS_CHANGE_REFERENCE 0x24
