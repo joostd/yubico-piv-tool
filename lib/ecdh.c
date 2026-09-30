@@ -54,7 +54,7 @@ static INIT_ONCE initOnce = INIT_ONCE_STATIC_INIT;
 static CRITICAL_SECTION cs;
 static int ref_count = 0;
 
-static BOOL CALLBACK _ecdh_init_once(PINIT_ONCE initOnce, PVOID p1, PVOID p2) {
+static BOOL CALLBACK _ecdh_init_once(PINIT_ONCE initOnce, PVOID p1, PVOID *p2) {
   (void)p1;
   (void)p2;
   InitializeCriticalSection(&cs);
