@@ -1052,6 +1052,7 @@ ykpiv_rc ykpiv_util_generate_key(ykpiv_state *state, uint8_t slot, uint8_t algor
     unsigned char *data_ptr = data;
     unsigned char expected_tag = YKPIV_IS_MLDSA(algorithm) ? 0x87 : 0x88;
     size_t len = 0;
+    unsigned long len_ul = 0;
 
     // Skip outer tag 7f49
     if (*data_ptr++ != 0x7f || *data_ptr++ != 0x49) {
@@ -1061,7 +1062,7 @@ ykpiv_rc ykpiv_util_generate_key(ykpiv_state *state, uint8_t slot, uint8_t algor
     }
 
     // Skip outer length
-    offs = get_length(data_ptr, data + recv_len, &len);
+    offs = get_length(data_ptr, data + recv_len, &len_ul);
     data_ptr += offs;
 
     // Now we should be at the PQC tag (0x87 or 0x88)
@@ -1072,8 +1073,9 @@ ykpiv_rc ykpiv_util_generate_key(ykpiv_state *state, uint8_t slot, uint8_t algor
     }
 
     // Get the key length
-    offs = get_length(data_ptr, data + recv_len, &len);
+    offs = get_length(data_ptr, data + recv_len, &len_ul);
     data_ptr += offs;
+    len = len_ul;
 
     cb_point = len;
     if (NULL == (ptr_point = _ykpiv_alloc(state, cb_point))) {
